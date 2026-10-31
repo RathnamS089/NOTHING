@@ -64,7 +64,8 @@
     "linux": {
       "target": [
         "AppImage",
-        "deb"
+        "deb",
+        "rpm"
       ],
       "category": "Audio",
       "icon": "assets/tray-win.png",
@@ -75,15 +76,24 @@
         }
       ],
       "syncDesktopName": true,
-      "maintainer": "Rathnam S <RathnamS089@users.noreply.github.com>"
+      "maintainer": "Rathnam S <RathnamS089@users.noreply.github.com>",
+      "executableArgs": [
+        "--ozone-platform=x11"
+      ]
     },
     "deb": {
       "depends": [
-        "bluez",
-        "python3",
+        "libgtk-3-0 | libgtk-3-0t64",
         "libnotify4",
+        "libnss3",
+        "libxss1",
         "libxtst6",
-        "libnss3"
+        "xdg-utils",
+        "libatspi2.0-0 | libatspi2.0-0t64",
+        "libuuid1",
+        "libsecret-1-0",
+        "bluez",
+        "python3"
       ]
     },
     "win": {
@@ -103,6 +113,21 @@
     },
     "nsis": {
       "artifactName": "Nothing-Island-Setup-${version}.${ext}"
+    },
+    "rpm": {
+      "depends": [
+        "gtk3",
+        "libnotify",
+        "nss",
+        "libXScrnSaver",
+        "libXtst",
+        "xdg-utils",
+        "at-spi2-core",
+        "libuuid",
+        "libsecret",
+        "bluez",
+        "python3"
+      ]
     }
   },
   "desktopName": "nothing-island.desktop"

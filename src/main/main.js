@@ -43,7 +43,13 @@ let switching = null; // address being switched to
 let demoTimer = null;
 
 // Linux compositors need this for the island's transparent window.
-if (process.platform === 'linux') app.commandLine.appendSwitch('enable-transparent-visuals');
+if (process.platform === 'linux') {
+  app.commandLine.appendSwitch('enable-transparent-visuals');
+  // Wayland (default on Ubuntu and Fedora GNOME) won't let apps place their own
+  // windows or keep them on top, so the island runs under XWayland instead.
+  // The packaged launcher passes the same flag (build.linux.executableArgs).
+  app.commandLine.appendSwitch('ozone-platform', 'x11');
+}
 
 if (!app.requestSingleInstanceLock()) app.quit();
 app.on('second-instance', () => openApp());
