@@ -6,14 +6,26 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Title bar: drag region; macOS keeps native traffic lights, Windows gets our own buttons. */
-.titlebar { height: 48px; flex: none; display: flex; align-items: center; justify-content: center; -webkit-app-region: drag; position: relative; }
+/* Title bar: drag region. macOS keeps native traffic lights; Windows and Linux
+   get our own buttons, styled after each platform's conventions. */
+.titlebar { height: 48px; flex: none; display: flex; align-items: center; justify-content: center; -webkit-app-region: drag; position: relative; user-select: none; }
 .titlebar .brand { color: var(--text-3); }
-.win-ctrls { position: absolute; right: 6px; top: 6px; display: flex; gap: 2px; -webkit-app-region: no-drag; }
-.win-ctrls button { width: 36px; height: 32px; border-radius: 10px; color: var(--text-2); font-size: 13px; }
+.win-ctrls { position: absolute; right: 6px; top: 0; bottom: 0; display: flex; align-items: center; gap: 2px; -webkit-app-region: no-drag; }
+.win-ctrls button { display: grid; place-items: center; color: var(--text-2); transition: background 0.15s, color 0.15s; }
+.win-ctrls svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; }
 .win-ctrls button:hover { background: var(--surface-2); color: var(--text); }
-.win-ctrls button[data-win='close']:hover { background: var(--red); color: #fff; }
 .mac .win-ctrls { display: none; }
+
+/* Windows: wide rectangular hit areas, red close. */
+.win .win-ctrls button { width: 40px; height: 32px; border-radius: 10px; }
+.win .win-ctrls button[data-win='close']:hover { background: var(--red); color: #fff; }
+
+/* Linux (GNOME/KDE): small round buttons on a soft disc, spaced apart. */
+.linux .win-ctrls { right: 12px; gap: 10px; }
+.linux .win-ctrls button { width: 24px; height: 24px; border-radius: 50%; background: var(--surface-2); }
+.linux .win-ctrls svg { width: 14px; height: 14px; stroke-width: 1.6; }
+.linux .win-ctrls button:hover { background: var(--line); }
+.linux .win-ctrls button:active { transform: scale(0.92); }
 
 /* Chromium ignores ::-webkit-scrollbar once scrollbar-width is set, so colour it here too (Linux/Windows show it). */
 main { flex: 1; overflow-y: auto; container-type: inline-size; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }

@@ -1,5 +1,7 @@
 const root = document.getElementById('root');
-if (nx.platform === 'darwin') document.body.classList.add('mac');
+document.body.classList.add({ darwin: 'mac', win32: 'win', linux: 'linux' }[nx.platform] || 'linux');
+// Frameless on Windows/Linux: double-clicking the bar maximises, as native title bars do.
+if (nx.platform !== 'darwin') document.querySelector('.titlebar').addEventListener('dblclick', (e) => !e.target.closest('button') && nx.win('maximize'));
 
 // Custom EQ is three filters on the buds themselves: bass, mid, treble.
 const BANDS = ['Bass', 'Mid', 'Treble'];
