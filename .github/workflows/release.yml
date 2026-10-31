@@ -92,6 +92,21 @@ jobs:
             codesign --verify --strict "$app/Contents/Resources/native/bin/nothing-link"
           done
 
+      # Launch the packaged app and fail if a page can't load (e.g. a fuse
+      # that blocks reading pages from app.asar leaves the windows blank).
+      - name: Smoke test packaged app
+        if: matrix.name == 'mac'
+        run: |
+          app="$(ls -d dist/mac-arm64/*.app)"
+          exe="$app/Contents/MacOS/Nothing Island"
+          ELECTRON_ENABLE_LOGGING=1 "$exe" > smoke.log 2>&1 &
+          sleep 8
+          "$exe" > /dev/null 2>&1 || true   # second launch opens the app window
+          sleep 6
+          pkill -f "$exe" || true
+          cat smoke.log
+          if grep -q "Failed to load URL" smoke.log; then echo "::error::packaged app failed to load a page"; exit 1; fi
+
       - uses: actions/upload-artifact@v4
         with:
           name: nothing-island-${{ matrix.name }}

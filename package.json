@@ -110,8 +110,7 @@
       "enableNodeCliInspectArguments": false,
       "enableEmbeddedAsarIntegrityValidation": true,
       "onlyLoadAppFromAsar": true,
-      "loadBrowserProcessSpecificV8Snapshot": false,
-      "grantFileProtocolExtraPrivileges": false
+      "loadBrowserProcessSpecificV8Snapshot": false
     },
     "nsis": {
       "artifactName": "Nothing-Island-Setup-${version}.${ext}"
