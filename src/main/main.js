@@ -1,11 +1,22 @@
 const path = require('path');
-const { app, BrowserWindow, Tray, Menu, ipcMain, screen, nativeImage } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, screen, nativeImage, session } = require('electron');
 const { Detector } = require('./detector');
 const { Store } = require('./store');
-const { Protocol } = require('./protocol');
+const { Bridge } = require('./nt/bridge');
+const { Controller } = require('./nt/controller');
 
 const isMac = process.platform === 'darwin';
 const RENDERER = path.join(__dirname, '..', 'renderer');
+// Renderers only ever see the narrow `nx` bridge from preload.js: no Node, no
+// direct IPC, sandboxed, and isolated from the preload's own context.
+const SECURE_PREFS = {
+  preload: path.join(__dirname, '..', 'preload.js'),
+  contextIsolation: true,
+  sandbox: true,
+  nodeIntegration: false,
+  webSecurity: true,
+  spellcheck: false,
+};
 const ISLAND_W = 520;
 const ISLAND_H = 260;
 
@@ -18,9 +29,13 @@ const DEMO_DEVICE = {
 };
 
 let island, appWin, tray, store, detector;
-const protocol = new Protocol();
+let bridge, controller;
 let demo = false;
+let switching = null; // address being switched to
 let demoTimer = null;
+
+// Linux compositors need this for the island's transparent window.
+if (process.platform === 'linux') app.commandLine.appendSwitch('enable-transparent-visuals');
 
 if (!app.requestSingleInstanceLock()) app.quit();
 app.on('second-instance', () => openApp());
@@ -32,7 +47,10 @@ function state() {
     settings: device ? store.device(device.address) : null,
     prefs: store.prefs(),
     demo,
-    live: protocol.connected,
+    live: !!controller?.open,
+    bridge: !!bridge?.available,
+    paired: demo ? [{ ...DEMO_DEVICE, connected: true }] : detector?.paired || [],
+    switching,
   };
 }
 
@@ -63,7 +81,7 @@ function createIsland() {
     alwaysOnTop: true,
     enableLargerThanScreen: true,
     ...(isMac ? { type: 'panel' } : { type: 'toolbar' }),
-    webPreferences: { preload: path.join(__dirname, '..', 'preload.js') },
+    webPreferences: SECURE_PREFS,
   });
   island.setAlwaysOnTop(true, 'screen-saver');
   island.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
@@ -88,7 +106,7 @@ function openApp(section) {
       ...(isMac
         ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 18, y: 18 } }
         : { frame: false }),
-      webPreferences: { preload: path.join(__dirname, '..', 'preload.js') },
+      webPreferences: SECURE_PREFS,
     });
     appWin.loadFile(path.join(RENDERER, 'app', 'index.html'), section ? { hash: section } : undefined);
     appWin.once('ready-to-show', () => appWin.show());
@@ -130,6 +148,14 @@ function updateTray() {
     { label: 'Open Nothing Island…', click: () => openApp() },
     { label: 'Show island', enabled: !!d, click: () => islandEvent('connected', d) },
     {
+      label: 'Switch to',
+      enabled: !demo && bridge?.available && detector.paired.length > 1,
+      submenu: (detector.paired.length ? detector.paired : [{ name: 'No other Nothing devices', address: '' }]).map((p) => ({
+        label: p.name, type: 'radio', checked: !!p.connected, enabled: !!p.address,
+        click: () => p.address && !p.connected && ipcMain.emit('tray-switch', null, p.address),
+      })),
+    },
+    {
       label: 'Island enabled', type: 'checkbox', checked: prefs.island.enabled,
       click: (i) => { store.setPrefs({ island: { ...prefs.island, enabled: i.checked } }); if (!i.checked) island.hide(); broadcast(); },
     },
@@ -155,7 +181,8 @@ function setDemo(on) {
     }, 30000);
   } else {
     detector.update(null);
-    detector.start();
+    if (bridge.available) bridge.listDevices();
+    else detector.start();
   }
   broadcast();
 }
@@ -167,22 +194,68 @@ function createTray() {
   if (isMac) icon.setTemplateImage(true);
   tray = new Tray(icon);
   tray.on('click', () => (isMac ? tray.popUpContextMenu() : openApp()));
+  if (process.platform === 'linux') tray.setTitle?.('');
   updateTray();
 }
 
 ipcMain.handle('state:get', () => state());
 
-ipcMain.handle('device:set', async (_e, patch) => {
+// Every IPC payload is untrusted: the renderer shows text from Bluetooth device
+// names and could be tricked, so only known keys with valid values get through.
+const oneOf = (v, list) => (list.includes(v) ? v : undefined);
+const int = (v, lo, hi) => (Number.isInteger(v) && v >= lo && v <= hi ? v : undefined);
+const bool = (v) => (typeof v === 'boolean' ? v : undefined);
+const GESTURE_KEYS = ['double', 'triple', 'hold'];
+const GESTURE_VALUES = ['play_pause', 'next', 'prev', 'volume_up', 'volume_down', 'noise_control', 'voice_assistant', 'none'];
+
+function cleanDevicePatch(p) {
+  if (!p || typeof p !== 'object') return {};
+  const out = {
+    anc: oneOf(p.anc, ['anc', 'transparency', 'off']),
+    ancLevel: oneOf(p.ancLevel, ['high', 'mid', 'low', 'adaptive', 'light', 'max']),
+    eqPreset: oneOf(p.eqPreset, ['balanced', 'bass', 'treble', 'voice', 'rock', 'electronic', 'pop', 'vocals', 'classical', 'custom']),
+    eqCustom: Array.isArray(p.eqCustom) && p.eqCustom.length === 3 && p.eqCustom.every((v) => int(v, -6, 6) !== undefined) ? p.eqCustom : undefined,
+    bass: p.bass && bool(p.bass.on) !== undefined && int(p.bass.level, 1, 5) !== undefined ? { on: p.bass.on, level: p.bass.level } : undefined,
+    lowLag: bool(p.lowLag),
+    inEar: bool(p.inEar),
+    dual: bool(p.dual),
+  };
+  if (p.gestures && typeof p.gestures === 'object') {
+    const g = {};
+    for (const side of ['left', 'right']) {
+      const src = p.gestures[side];
+      if (!src || typeof src !== 'object') continue;
+      g[side] = Object.fromEntries(GESTURE_KEYS.map((k) => [k, oneOf(src[k], GESTURE_VALUES)]).filter(([, v]) => v));
+    }
+    if (g.left && g.right) out.gestures = g;
+  }
+  return Object.fromEntries(Object.entries(out).filter(([, v]) => v !== undefined));
+}
+
+function cleanPrefsPatch(p) {
+  if (!p || typeof p !== 'object') return {};
+  const out = {};
+  if (oneOf(p.theme, ['system', 'dark', 'light'])) out.theme = p.theme;
+  if (p.island && bool(p.island.enabled) !== undefined) out.island = { ...store.prefs().island, enabled: p.island.enabled };
+  return out;
+}
+
+ipcMain.handle('device:set', async (_e, rawPatch) => {
   const d = detector.current;
-  if (!d) return state();
-  const settings = store.setDevice(d.address, patch);
-  await protocol.apply(d.address, settings);
+  const patch = cleanDevicePatch(rawPatch);
+  if (!d || !Object.keys(patch).length) return state();
+  const prev = store.device(d.address);
+  const next = store.setDevice(d.address, patch);
   broadcast();
+  if (controller.open) {
+    const ok = await controller.applyDiff(prev, next);
+    if (!ok) console.warn('[control] some settings were not acknowledged by the buds');
+  }
   return state();
 });
 
-ipcMain.handle('prefs:set', (_e, patch) => {
-  store.setPrefs(patch);
+ipcMain.handle('prefs:set', (_e, rawPatch) => {
+  store.setPrefs(cleanPrefsPatch(rawPatch));
   if (!store.prefs().island.enabled) island.hide();
   broadcast();
   return state();
@@ -190,12 +263,39 @@ ipcMain.handle('prefs:set', (_e, patch) => {
 
 ipcMain.handle('device:ring', (_e, side) => {
   const d = detector.current;
-  return d ? protocol.ring(d.address, side) : { ok: false };
+  if (!d || !controller.open) return { ok: false };
+  if (side === 'stop') return controller.ring('both', false).then((ok) => ({ ok }));
+  if (!['left', 'right', 'both'].includes(side)) return { ok: false };
+  return controller.ring(side, true).then((ok) => ({ ok }));
 });
 
-ipcMain.on('app:open', (_e, section) => openApp(section));
+// Quick switch: make `address` the only connected Nothing device.
+ipcMain.on('tray-switch', (_e, address) => switchTo(address));
+ipcMain.handle('device:switch', (_e, address) => switchTo(address));
 
-ipcMain.on('island:interactive', (_e, on) => {
+async function switchTo(address) {
+  // Only ever touch paired Nothing devices, never an arbitrary address from the renderer.
+  if (!bridge.available || demo || switching || !detector.paired.some((d) => d.address === address)) return { ok: false };
+  switching = address;
+  broadcast();
+  for (const d of detector.paired) if (d.connected && d.address !== address) bridge.disconnectDevice(d.address);
+  const ok = await new Promise((resolve) => {
+    const t = setTimeout(() => done(false), 20000);
+    const done = (v) => { clearTimeout(t); bridge.off('device', onDev); resolve(v); };
+    const onDev = (m) => m.address === address && done(!!m.ok);
+    bridge.on('device', onDev);
+    bridge.connectDevice(address);
+  });
+  switching = null;
+  bridge.listDevices();
+  broadcast();
+  return { ok };
+}
+
+ipcMain.on('app:open', (_e, section) => openApp(typeof section === 'string' && /^[a-z]{1,20}$/.test(section) ? section : undefined));
+
+ipcMain.on('island:interactive', (e, on) => {
+  if (e.sender !== island?.webContents) return;
   if (!island) return;
   if (on) island.setIgnoreMouseEvents(false);
   else island.setIgnoreMouseEvents(true, { forward: true });
@@ -211,22 +311,72 @@ ipcMain.on('win', (e, action) => {
   if (action === 'maximize') (w.isMaximized() ? w.unmaximize() : w.maximize());
 });
 
+// Nothing in this app loads remote content: block navigation, popups and
+// every permission (camera, mic, notifications, geolocation...).
+app.on('web-contents-created', (_e, contents) => {
+  contents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  contents.on('will-navigate', (e) => e.preventDefault());
+  contents.on('will-attach-webview', (e) => e.preventDefault());
+});
+
 app.whenReady().then(() => {
+  session.defaultSession.setPermissionRequestHandler((_wc, _perm, cb) => cb(false));
+  session.defaultSession.setPermissionCheckHandler(() => false);
   if (isMac) app.dock.hide();
   store = new Store();
   detector = new Detector();
-  detector.on('connected', (d) => { islandEvent('connected', d); broadcast(); });
-  detector.on('disconnected', (d) => { islandEvent('disconnected', d); broadcast(); });
+  bridge = new Bridge();
+  controller = new Controller(bridge);
+
+  detector.on('connected', (d) => {
+    islandEvent('connected', d);
+    broadcast();
+    if (!demo && bridge.available) controller.attach(d).then(broadcast);
+  });
+  detector.on('disconnected', (d) => {
+    islandEvent('disconnected', d);
+    if (controller.device?.address === d.address) controller.detach();
+    broadcast();
+  });
   detector.on('updated', broadcast);
+  detector.on('paired', broadcast);
+
+  // The buds are the source of truth: fold what they report into the store and device.
+  controller.on('live', (live) => {
+    const d = detector.current;
+    if (!d || controller.device?.address !== d.address) return;
+    const { battery, firmware, ...settings } = live;
+    const patch = {};
+    if (settings.anc) Object.assign(patch, settings.anc);
+    for (const k of ['eqPreset', 'eqCustom', 'bass', 'lowLag', 'inEar']) if (settings[k] != null) patch[k] = settings[k];
+    if (Object.keys(patch).length) store.setDevice(d.address, patch);
+    detector.patch({ ...(battery ? { battery } : {}), ...(firmware ? { firmware } : {}) });
+    broadcast();
+  });
+  controller.on('status', broadcast);
+  controller.on('log', (m) => process.env.NOTHING_DEBUG && console.log('[control]', m));
+
+  bridge.on('devices', (list) => !demo && detector.fromBridgeList(list));
+  bridge.on('exit', ({ code, signal }) => {
+    console.warn(`[bridge] helper exited (${signal || code}); falling back to polling`);
+    if (!demo && !bridge.available) detector.start();
+  });
 
   createIsland();
   createTray();
 
   if (process.env.NOTHING_DEMO) {
     island.webContents.once('did-finish-load', () => setTimeout(() => setDemo(true), 800));
-  } else {
-    detector.start();
+  } else if (!bridge.start()) {
+    detector.start(); // no native helper for this OS/build: poll the OS instead
   }
+  if (process.env.NOTHING_DEMO) bridge.start();
+});
+
+// Never leave a bud ringing after the app goes away.
+app.on('before-quit', () => {
+  if (controller?.open) controller.ring('both', false);
+  setTimeout(() => bridge?.stop(), 300);
 });
 
 // Menu-bar utility: closing the companion window must not quit.

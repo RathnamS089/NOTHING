@@ -86,15 +86,38 @@ class Detector extends EventEmitter {
     this.current = null;
     this.timer = null;
     this.busy = false;
+    this.paired = [];
   }
 
   start() {
+    this.stop();
     this.tick();
     this.timer = setInterval(() => this.tick(), POLL_MS);
   }
 
   stop() {
     clearInterval(this.timer);
+    this.timer = null;
+  }
+
+  // Event-driven mode: the native bridge pushes the paired-device list on every
+  // connect/disconnect, so the island reacts instantly instead of on the next poll.
+  fromBridgeList(list) {
+    this.paired = list.filter((d) => isNothingDevice(d.name, d.address)).map((d) => ({ ...d, model: identify(d.name) }));
+    const found = this.paired.find((d) => d.connected);
+    const keep = found && this.current?.address === found.address ? this.current : null;
+    this.update(found ? {
+      name: found.name,
+      address: found.address,
+      battery: keep?.battery || { left: null, right: null, case: null, main: null },
+      firmware: keep?.firmware || null,
+      model: found.model,
+    } : null);
+    this.emit('paired', this.paired);
+  }
+
+  patch(fields) {
+    if (this.current) this.update({ ...this.current, ...fields });
   }
 
   async tick() {

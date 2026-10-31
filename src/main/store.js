@@ -8,7 +8,7 @@ const DEFAULT_DEVICE = {
   anc: 'anc', // 'anc' | 'transparency' | 'off'
   ancLevel: 'high',
   eqPreset: 'balanced',
-  eqCustom: [0, 0, 0, 0, 0, 0, 0, 0],
+  eqCustom: [0, 0, 0], // bass, mid, treble (dB)
   bass: { on: false, level: 2 },
   lowLag: false,
   inEar: true,

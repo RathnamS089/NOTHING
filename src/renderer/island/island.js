@@ -9,6 +9,8 @@ let hideTimer = null;
 let hovering = false;
 
 const ANC_ORDER = ['anc', 'transparency', 'off'];
+// Device names come from Bluetooth and can contain anything; never inject them raw.
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 // 3x3 dot glyphs per noise mode
 const GLYPH = { anc: '111101111', transparency: '010111010', off: '000010000' };
 
@@ -52,7 +54,11 @@ function render() {
       <div class="top"><span class="label">${k}</span><b class="dot-type">${NX.fmt(v)}${v != null ? '<small>%</small>' : ''}</b></div>
       ${NX.dots(v)}
     </div>`).join('');
-  $('eHint').textContent = b.left == null && b.right == null && b.main == null ? 'Battery not reported by OS' : '';
+  // Quick switch: other paired Nothing devices, one tap to move the audio over.
+  const others = (state.paired || []).filter((p) => !p.connected).slice(0, 2);
+  $('eHint').innerHTML = others.length
+    ? others.map((p) => `<button class="swap" data-addr="${esc(p.address)}"${state.switching ? ' disabled' : ''}>${state.switching === p.address ? 'Switching…' : '⇄ ' + esc(p.name.replace(/^(nothing|cmf)\s+/i, ''))}</button>`).join('')
+    : b.left == null && b.right == null && b.main == null ? 'Battery not reported yet' : '';
   $('gName').textContent = d.model?.name || d.name;
 }
 
@@ -82,6 +88,13 @@ $('eAnc').addEventListener('click', (e) => {
   e.stopPropagation();
   const cur = state?.settings?.anc || 'off';
   nx.setDevice({ anc: ANC_ORDER[(ANC_ORDER.indexOf(cur) + 1) % ANC_ORDER.length] });
+});
+
+$('eHint').addEventListener('click', (e) => {
+  const t = e.target.closest('.swap');
+  if (!t) return;
+  e.stopPropagation();
+  nx.switchTo(t.dataset.addr);
 });
 
 $('eOpen').addEventListener('click', (e) => {
