@@ -75,7 +75,7 @@ test('YouTube titles are cleaned and statuses normalised', () => {
   const { normalise, cleanYouTubeTitle } = require('../src/main/media/nowplaying');
   assert.strictEqual(cleanYouTubeTitle('(3) Daft Punk - Veridis Quo - YouTube'), 'Daft Punk - Veridis Quo');
   assert.deepStrictEqual(normalise({ status: 'kPSP', title: 'Song', artist: ' A ', source: 'Spotify' }),
-    { title: 'Song', artist: 'A', source: 'Spotify', status: 'playing' });
+    { title: 'Song', artist: 'A', source: 'Spotify', status: 'playing', art: null });
   assert.strictEqual(normalise({ status: 'Paused', title: '  ' }), null);
 });
 
@@ -96,7 +96,8 @@ test('song glyphs are deterministic per track and differ between tracks', () => 
 test('web player tabs become tracks', () => {
   const { parseBrowserTab } = require('../src/main/media/nowplaying');
   assert.deepStrictEqual(parseBrowserTab('https://open.spotify.com/track/1', 'Blinding Lights • The Weeknd', 'Safari'),
-    { title: 'Blinding Lights', artist: 'The Weeknd', status: 'playing', source: 'Spotify · Safari' });
+    { title: 'Blinding Lights', artist: 'The Weeknd', status: 'playing', source: 'Spotify · Safari',
+      art: { kind: 'spotify-page', url: 'https://open.spotify.com/track/1' } });
   assert.strictEqual(parseBrowserTab('https://open.spotify.com/', 'Spotify – Web Player: Music for everyone', 'Safari'), null);
   assert.strictEqual(parseBrowserTab('https://music.youtube.com/watch?v=x', 'Song', 'Chrome').source, 'YouTube Music · Chrome');
   assert.strictEqual(parseBrowserTab('https://music.apple.com/in/album/x', 'Song by Artist - Apple Music', 'Safari').artist, 'Artist');
@@ -108,4 +109,23 @@ test('Spotify page titles (as Safari reports them) become tracks', () => {
   assert.deepStrictEqual([t.title, t.artist, t.status], ['death bed (coffee for your head)', 'Powfu, beabadoobee', 'unknown']);
   const s = parseBrowserTab('https://open.spotify.com/track/x', 'Sunflower - song and lyrics by Post Malone, Swae Lee | Spotify', 'Safari');
   assert.deepStrictEqual([s.title, s.artist], ['Sunflower', 'Post Malone, Swae Lee']);
+});
+
+test('cover fetching only reaches allowlisted hosts and paths', () => {
+  const { allowed } = require('../src/main/media/cover');
+  assert.ok(allowed('https://i.scdn.co/image/ab67616d0000b273'));
+  assert.ok(allowed('https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg'));
+  assert.ok(allowed('https://image-cdn-ak.spotifycdn.com/image/ab67616d00001e02'));
+  assert.ok(!allowed('https://image-cdn-ak.spotifycdn.com/other/x'));
+  assert.ok(allowed('https://open.spotify.com/oembed?url=x'));
+  assert.ok(!allowed('http://i.scdn.co/image/x'), 'plain http');
+  assert.ok(!allowed('https://open.spotify.com/track/x'), 'wrong path');
+  assert.ok(!allowed('https://evil.example/image/x'));
+  assert.ok(!allowed('https://i.scdn.co.evil.example/image/x'));
+  assert.ok(!allowed('file:///etc/passwd'));
+});
+
+test('YouTube tabs carry the video id for the thumbnail', () => {
+  const { parseBrowserTab } = require('../src/main/media/nowplaying');
+  assert.deepStrictEqual(parseBrowserTab('https://music.youtube.com/watch?v=dQw4w9WgXcQ&list=x', 'Song', 'Safari').art, { kind: 'youtube', id: 'dQw4w9WgXcQ' });
 });

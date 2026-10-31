@@ -85,12 +85,31 @@
     }
   }
 
+  // Box-average a grid×grid cover down to n×n dot levels.
+  function downsample(cover, n) {
+    const g = cover.grid;
+    const out = new Array(n * n).fill(0);
+    for (let y = 0; y < n; y++) {
+      for (let x = 0; x < n; x++) {
+        const x0 = Math.floor((x * g) / n), x1 = Math.max(x0 + 1, Math.floor(((x + 1) * g) / n));
+        const y0 = Math.floor((y * g) / n), y1 = Math.max(y0 + 1, Math.floor(((y + 1) * g) / n));
+        let sum = 0;
+        for (let yy = y0; yy < y1; yy++) for (let xx = x0; xx < x1; xx++) sum += cover.levels[yy * g + xx];
+        out[y * n + x] = sum / ((x1 - x0) * (y1 - y0));
+      }
+    }
+    return out;
+  }
+
   class Glyph {
-    constructor(canvas, { cols, rows, accent = '#d71921', on = '#ffffff', off = 'rgba(255,255,255,0.09)' } = {}) {
+    // coverN: when set and the track has a cover, draw it as an n×n dot portrait.
+    constructor(canvas, { cols, rows, coverN = 0, accent = '#d71921', on = '#ffffff', off = 'rgba(255,255,255,0.09)' } = {}) {
       this.canvas = canvas;
       this.ctx = canvas.getContext('2d');
       this.cols = cols;
       this.rows = rows;
+      this.coverN = coverN;
+      this.cover = null;
       this.colors = { accent, on, off };
       this.spec = null;
       this.status = 'paused';
@@ -116,6 +135,7 @@
       if (accent) this.colors.accent = accent;
       const next = track ? spec(track) : null;
       if (next?.seed !== this.spec?.seed) this.t0 = performance.now();
+      this.cover = this.coverN && track?.cover ? downsample(track.cover, this.coverN) : null;
       this.spec = next;
       this.status = track?.status || 'paused';
       this.kick();
@@ -141,7 +161,48 @@
       if (this.spec && this.status !== 'paused' && !this.destroyed && !document.hidden) this.frame = requestAnimationFrame(this.loop);
     }
 
+    // Album cover as dots: brightness sets size; a slow ripple from the centre
+    // keeps time with the song, and a red dot in the corner means "playing".
+    drawCover(now) {
+      const { ctx, w, h, coverN: n, cover, spec: s } = this;
+      ctx.clearRect(0, 0, w, h);
+      const side = Math.min(w, h);
+      const cell = side / n;
+      const ox = (w - side) / 2;
+      const oy = (h - side) / 2;
+      const speed = this.status === 'playing' ? 1 : this.status === 'unknown' ? 0.5 : 0;
+      const beat = ((now - this.t0) / 1000) * (s.tempo / 60) * speed;
+      const c = (n - 1) / 2;
+      for (let y = 0; y < n; y++) {
+        for (let x = 0; x < n; x++) {
+          const level = cover[y * n + x];
+          const d = Math.hypot(x - c, y - c) / n;
+          const ripple = speed ? 0.9 + 0.2 * pulse(beat * 0.5 - d * 1.6) : 1;
+          ctx.beginPath();
+          if (level < 0.06) {
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = this.colors.off;
+            ctx.arc(ox + (x + 0.5) * cell, oy + (y + 0.5) * cell, cell * 0.12, 0, Math.PI * 2);
+          } else {
+            ctx.globalAlpha = (0.3 + 0.7 * level) * (this.status === 'paused' ? 0.55 : 1);
+            ctx.fillStyle = this.colors.on;
+            ctx.arc(ox + (x + 0.5) * cell, oy + (y + 0.5) * cell, cell * (0.12 + 0.34 * level) * ripple, 0, Math.PI * 2);
+          }
+          ctx.fill();
+        }
+      }
+      if (speed) {
+        ctx.globalAlpha = 0.6 + 0.4 * pulse(beat);
+        ctx.fillStyle = this.colors.accent;
+        ctx.beginPath();
+        ctx.arc(ox + side - cell * 0.5, oy + cell * 0.5, cell * 0.42, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+
     draw(now = performance.now()) {
+      if (this.cover && this.spec) return this.drawCover(now);
       const { ctx, cols, rows, w, h, spec: s } = this;
       ctx.clearRect(0, 0, w, h);
       const cell = Math.min(w / cols, h / rows);
@@ -173,5 +234,5 @@
     }
   }
 
-  window.NXGlyph = { Glyph, spec, hash };
+  window.NXGlyph = { Glyph, spec, hash, downsample };
 })();

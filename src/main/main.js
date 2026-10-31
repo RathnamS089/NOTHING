@@ -58,9 +58,16 @@ function state() {
     live: !!controller?.open,
     bridge: !!bridge?.available,
     paired: demo ? [{ ...DEMO_DEVICE, connected: true }] : detector?.paired || [],
-    track: store.prefs().media?.enabled ? nowPlaying.track : null,
+    track: store.prefs().media?.enabled ? publicTrack(nowPlaying.track) : null,
     switching,
   };
+}
+
+// What renderers may see of a track: no URLs or cover sources, just text and dot levels.
+function publicTrack(t) {
+  if (!t) return null;
+  const { art, cover, ...rest } = t;
+  return store.prefs().media?.covers === false || !cover ? rest : { ...rest, cover };
 }
 
 function broadcast() {
@@ -133,6 +140,7 @@ function openApp(section) {
 
 // Start or stop reading the player according to the user's preference.
 function syncMedia() {
+  nowPlaying.covers = store.prefs().media?.covers !== false;
   if (demo) return;
   if (store.prefs().media?.enabled) nowPlaying.start();
   else nowPlaying.stop();
@@ -267,7 +275,12 @@ function cleanPrefsPatch(p) {
   const out = {};
   if (oneOf(p.theme, ['system', 'dark', 'light'])) out.theme = p.theme;
   if (p.island && bool(p.island.enabled) !== undefined) out.island = { ...store.prefs().island, enabled: p.island.enabled };
-  if (p.media && bool(p.media.enabled) !== undefined) out.media = { enabled: p.media.enabled };
+  if (p.media && typeof p.media === 'object') {
+    const media = { ...store.prefs().media };
+    if (bool(p.media.enabled) !== undefined) media.enabled = p.media.enabled;
+    if (bool(p.media.covers) !== undefined) media.covers = p.media.covers;
+    out.media = media;
+  }
   return out;
 }
 
@@ -389,7 +402,7 @@ app.whenReady().then(() => {
 
   nowPlaying.on('track', (track, { changed }) => {
     broadcast();
-    if (changed && track && detector.current && store.prefs().media?.enabled) islandEvent('track', detector.current, track);
+    if (changed && track && detector.current && store.prefs().media?.enabled) islandEvent('track', detector.current, publicTrack(track));
   });
   syncMedia();
   controller.on('log', (m) => process.env.NOTHING_DEBUG && console.log('[control]', m));

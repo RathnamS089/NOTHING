@@ -14,6 +14,7 @@
 
 const { execFile, spawn } = require('child_process');
 const { EventEmitter } = require('events');
+const { coverFor } = require('./cover');
 
 const MAC_POLL_MS = 2500;
 const SEP = '\u001f'; // unit separator: can't appear in a title
@@ -41,6 +42,7 @@ const MAC_PLAYERS = [
   {
     process: 'Music',
     source: 'Apple Music',
+    art: () => ({ kind: 'applemusic' }),
     script: `tell application "Music"
       if player state is playing or player state is paused then
         return (player state as text) & "${SEP}" & (name of current track) & "${SEP}" & (artist of current track)
@@ -52,9 +54,10 @@ const MAC_PLAYERS = [
     source: 'Spotify',
     script: `tell application "Spotify"
       if player state is playing or player state is paused then
-        return (player state as text) & "${SEP}" & (name of current track) & "${SEP}" & (artist of current track)
+        return (player state as text) & "${SEP}" & (name of current track) & "${SEP}" & (artist of current track) & "${SEP}" & (artwork url of current track)
       end if
     end tell`,
+    art: (extra) => (extra ? { kind: 'url', url: extra } : null),
   },
   // Browsers: the active tab if it is a music page, otherwise the first music tab
   // anywhere (music usually plays in the background). URLs are matched inside
@@ -80,12 +83,13 @@ function parseBrowserTab(url, title, browser) {
   if (/open\.spotify\.com/.test(url)) {
     // Spotify titles the tab "Song • Artist" while playing, "Spotify – Web Player…" otherwise.
     const m = title.match(/^(.*?)\s+•\s+(.*)$/);
-    if (m) return { title: m[1], artist: m[2], status: 'playing', source: `Spotify · ${browser}` };
+    const art = { kind: 'spotify-page', url };
+    if (m) return { title: m[1], artist: m[2], status: 'playing', source: `Spotify · ${browser}`, art };
     // Otherwise it's the page's own title, e.g.
     //   "Listen to death bed - Single by Powfu, beabadoobee | Spotify"
     //   "Song Name - song and lyrics by Artist | Spotify"
     const page = title.match(/^(?:Listen to\s+)?(.*?)(?:\s+-\s+(?:Single|EP|Album|song and lyrics|song))?\s+by\s+(.*?)\s*\|\s*Spotify$/i);
-    return page ? { title: page[1], artist: page[2], status: 'unknown', source: `Spotify · ${browser}` } : null;
+    return page ? { title: page[1], artist: page[2], status: 'unknown', source: `Spotify · ${browser}`, art } : null;
   }
   if (/music\.apple\.com/.test(url)) {
     const t = title.replace(/\s*[-–]\s*Apple Music.*$/i, '').replace(/^Apple Music.*$/i, '');
@@ -94,7 +98,8 @@ function parseBrowserTab(url, title, browser) {
   }
   if (/youtube\.com\/watch/.test(url)) {
     const music = /music\.youtube\.com/.test(url);
-    return { title, artist: '', status: 'unknown', source: `${music ? 'YouTube Music' : 'YouTube'} · ${browser}` };
+    const id = url.match(/[?&]v=([\w-]{11})/)?.[1];
+    return { title, artist: '', status: 'unknown', source: `${music ? 'YouTube Music' : 'YouTube'} · ${browser}`, art: id ? { kind: 'youtube', id } : null };
   }
   return null;
 }
@@ -112,7 +117,7 @@ function normalise(raw) {
     : /pause|stop/i.test(st) || /kPS[pS]/.test(st) ? 'paused'
     : 'unknown';
   const title = /youtube/i.test(raw.source || '') ? cleanYouTubeTitle(raw.title) : raw.title.trim();
-  return title ? { title, artist: (raw.artist || '').trim(), source: raw.source || '', status } : null;
+  return title ? { title, artist: (raw.artist || '').trim(), source: raw.source || '', status, art: raw.art || null } : null;
 }
 
 class NowPlaying extends EventEmitter {
@@ -122,6 +127,7 @@ class NowPlaying extends EventEmitter {
     this.timer = null;
     this.proc = null;
     this.running = false;
+    this.covers = true; // fetch album covers (Settings → Album covers)
   }
 
   start() {
@@ -147,10 +153,22 @@ class NowPlaying extends EventEmitter {
 
   set(track) {
     const next = normalise(track);
-    if (JSON.stringify(next) === JSON.stringify(this.track)) return;
+    const { cover, ...prev } = this.track || {};
+    if (JSON.stringify(next) === JSON.stringify(this.track ? prev : null)) return;
     const changed = next?.title !== this.track?.title || next?.artist !== this.track?.artist;
-    this.track = next;
-    this.emit('track', next, { changed });
+    // Same song, new status: keep the cover we already have.
+    this.track = next && !changed && cover ? { ...next, cover } : next;
+    this.emit('track', this.track, { changed });
+    if (next && changed && this.covers) this.loadCover(next);
+  }
+
+  async loadCover(track) {
+    const key = `${track.title}\u0000${track.artist}`;
+    const cover = await coverFor(key, track.art);
+    // Only attach it if that song is still the one playing.
+    if (!cover || !this.track || `${this.track.title}\u0000${this.track.artist}` !== key) return;
+    this.track = { ...this.track, cover };
+    this.emit('track', this.track, { changed: false });
   }
 
   // ---- macOS ---------------------------------------------------------------
@@ -175,8 +193,8 @@ class NowPlaying extends EventEmitter {
           if (process.env.NOTHING_DEBUG) console.log('[media]', p.browser, t ? 'matched' : 'no track');
           if (!t) continue;
         } else {
-          const [status, title, artist] = out.split(SEP);
-          t = { status, title, artist, source: p.source };
+          const [status, title, artist, extra] = out.split(SEP);
+          t = { status, title, artist, source: p.source, art: p.art?.(extra) || null };
         }
         if (/playing/i.test(t.status) || /kPSP/.test(t.status)) { best = t; break; } // a playing player wins
         best ||= t;
@@ -219,11 +237,12 @@ while ($true) {
   // ---- Linux ---------------------------------------------------------------
 
   followLinux() {
-    const fmt = `{{status}}${SEP}{{title}}${SEP}{{artist}}${SEP}{{playerName}}${SEP}{{xesam:url}}`;
+    const fmt = `{{status}}${SEP}{{title}}${SEP}{{artist}}${SEP}{{playerName}}${SEP}{{xesam:url}}${SEP}{{mpris:artUrl}}`;
     this.follow('playerctl', ['--follow', 'metadata', '--format', fmt], (line) => {
-      const [status, title, artist, player, url] = line.split(SEP);
+      const [status, title, artist, player, url, artUrl] = line.split(SEP);
       const source = /youtube\.com/.test(url || '') ? `YouTube · ${player}` : player;
-      return title ? { status, title, artist, source } : null;
+      const art = /^file:/.test(artUrl || '') ? { kind: 'file', url: artUrl } : artUrl ? { kind: 'url', url: artUrl } : null;
+      return title ? { status, title, artist, source, art } : null;
     });
   }
 

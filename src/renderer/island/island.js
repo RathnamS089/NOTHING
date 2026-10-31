@@ -15,6 +15,8 @@ const glyphs = {
   mini: new NXGlyph.Glyph($('cMedia'), { cols: 9, rows: 3 }),
   strip: new NXGlyph.Glyph($('eGlyph'), { cols: 11, rows: 6 }),
   big: new NXGlyph.Glyph($('tGlyph'), { cols: 16, rows: 6 }),
+  stripCover: new NXGlyph.Glyph($('eCover'), { cols: 1, rows: 1, coverN: 14 }),
+  bigCover: new NXGlyph.Glyph($('tCover'), { cols: 1, rows: 1, coverN: 18 }),
 };
 
 const ANC_ORDER = ['anc', 'transparency', 'off'];
@@ -24,12 +26,13 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const GLYPH = { anc: '111101111', transparency: '010111010', off: '000010000' };
 
 function setMode(mode) {
-  pill.className = mode + (state?.track ? ' has-media' : '');
+  pill.className = mode + (state?.track ? ' has-media' : '') + (state?.track?.cover ? ' has-cover' : '');
 }
 
 function renderTrack() {
   const t = state?.track;
   pill.classList.toggle('has-media', !!t);
+  pill.classList.toggle('has-cover', !!t?.cover);
   for (const g of Object.values(glyphs)) g.set(t, accent());
   if (!t) return;
   const src = `${t.source}${t.status === 'paused' ? ' · paused' : ''}`;

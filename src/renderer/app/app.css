@@ -143,7 +143,9 @@ select {
 }
 
 /* Now playing: the song's glyph, large */
-.nowplaying canvas { width: 100%; aspect-ratio: 3 / 1; display: block; }
+.nowplaying #npGlyph { width: 100%; aspect-ratio: 4 / 1; display: block; }
+.np-head { display: flex; align-items: center; gap: 18px; min-width: 0; }
+#npCover { width: clamp(110px, 32cqi, 180px); aspect-ratio: 1; flex: none; display: block; }
 .np-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .np-title { font-family: var(--font-dot); font-weight: 900; font-size: 22px; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .np-artist { color: var(--text-2); font-size: 13px; }

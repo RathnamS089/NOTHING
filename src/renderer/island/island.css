@@ -125,3 +125,12 @@ body { font-family: var(--font-ui); color: #fff; }
 .mac .trackview { padding-top: 32px; }
 #tGlyph { width: 128px; height: 48px; flex: none; }
 .trackview .mtitle { font-size: 20px; line-height: 1.1; text-transform: uppercase; }
+
+/* Album cover as dots, shown instead of the generated glyph when available. */
+canvas.cover { display: none; flex: none; }
+#pill.has-cover canvas.cover { display: block; }
+#pill.has-cover #eGlyph, #pill.has-cover #tGlyph { display: none; }
+#eCover { width: 44px; height: 44px; }
+#tCover { width: 64px; height: 64px; }
+#pill.track.has-cover { height: 96px; border-radius: 48px; }
+.mac #pill.track.has-cover { height: 128px; border-radius: 0 0 48px 48px; }
