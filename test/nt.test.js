@@ -70,3 +70,25 @@ test('ring stop is addressed to the requested bud', () => {
   assert.deepStrictEqual(ACTIONS.ring.encode('left', false), [0x02, 0]);
   assert.deepStrictEqual(ACTIONS.ring.encode('right', false), [0x03, 0]);
 });
+
+test('YouTube titles are cleaned and statuses normalised', () => {
+  const { normalise, cleanYouTubeTitle } = require('../src/main/media/nowplaying');
+  assert.strictEqual(cleanYouTubeTitle('(3) Daft Punk - Veridis Quo - YouTube'), 'Daft Punk - Veridis Quo');
+  assert.deepStrictEqual(normalise({ status: 'kPSP', title: 'Song', artist: ' A ', source: 'Spotify' }),
+    { title: 'Song', artist: 'A', source: 'Spotify', status: 'playing' });
+  assert.strictEqual(normalise({ status: 'Paused', title: '  ' }), null);
+});
+
+test('song glyphs are deterministic per track and differ between tracks', () => {
+  const vm = require('node:vm');
+  const ctx = { window: {} };
+  vm.runInNewContext(require('fs').readFileSync(require.resolve('../src/renderer/shared/glyph.js'), 'utf8'), ctx);
+  const { spec } = ctx.window.NXGlyph;
+  const a1 = spec({ title: 'Veridis Quo', artist: 'Daft Punk' });
+  const a2 = spec({ title: 'veridis quo', artist: 'DAFT PUNK' });
+  const b = spec({ title: 'Digital Love', artist: 'Daft Punk' });
+  assert.strictEqual(JSON.stringify(a1), JSON.stringify(a2));
+  assert.notStrictEqual(a1.seed, b.seed);
+  const motifs = new Set(Array.from({ length: 40 }, (_, i) => spec({ title: `t${i}`, artist: '' }).motif));
+  assert.strictEqual(motifs.size, 4);
+});

@@ -4,6 +4,7 @@ const { Detector } = require('./detector');
 const { Store } = require('./store');
 const { Bridge } = require('./nt/bridge');
 const { Controller } = require('./nt/controller');
+const { NowPlaying } = require('./media/nowplaying');
 
 const isMac = process.platform === 'darwin';
 const RENDERER = path.join(__dirname, '..', 'renderer');
@@ -18,7 +19,7 @@ const SECURE_PREFS = {
   spellcheck: false,
 };
 const ISLAND_W = 520;
-const ISLAND_H = 260;
+const ISLAND_H = 320;
 
 const DEMO_DEVICE = {
   name: 'CMF Buds 2a',
@@ -30,6 +31,13 @@ const DEMO_DEVICE = {
 
 let island, appWin, tray, store, detector;
 let bridge, controller;
+const nowPlaying = new NowPlaying();
+let demoTrackTimer = null;
+const DEMO_TRACKS = [
+  { title: 'Glass Animals Interlude', artist: 'Demo Artist', source: 'Spotify', status: 'playing' },
+  { title: 'Midnight Transparency', artist: 'CMF Sessions', source: 'Apple Music', status: 'playing' },
+  { title: 'Lo-fi beats to build apps to', artist: '', source: 'YouTube · Chrome', status: 'unknown' },
+];
 let demo = false;
 let switching = null; // address being switched to
 let demoTimer = null;
@@ -50,6 +58,7 @@ function state() {
     live: !!controller?.open,
     bridge: !!bridge?.available,
     paired: demo ? [{ ...DEMO_DEVICE, connected: true }] : detector?.paired || [],
+    track: store.prefs().media?.enabled ? nowPlaying.track : null,
     switching,
   };
 }
@@ -122,8 +131,19 @@ function openApp(section) {
   }
 }
 
-function islandEvent(type, device) {
+// Start or stop reading the player according to the user's preference.
+function syncMedia() {
+  if (demo) return;
+  if (store.prefs().media?.enabled) nowPlaying.start();
+  else nowPlaying.stop();
+}
+
+function islandEvent(type, device, track) {
   if (!island || !store.prefs().island.enabled) return;
+  if (type === 'track') {
+    if (island.isVisible()) island.webContents.send('island', { type, device, track });
+    return;
+  }
   if (type === 'connected') {
     island.showInactive();
     island.webContents.send('island', { type, device });
@@ -169,6 +189,7 @@ function updateTray() {
 function setDemo(on) {
   demo = on;
   clearInterval(demoTimer);
+  clearInterval(demoTrackTimer);
   if (on) {
     detector.stop();
     detector.update(structuredClone(DEMO_DEVICE));
@@ -179,7 +200,16 @@ function setDemo(on) {
       cur.battery.right = Math.max(5, cur.battery.right - 1);
       detector.update(cur);
     }, 30000);
+    // Rotate a few fake tracks so the glyphs can be seen without a player.
+    if (store.prefs().media?.enabled) {
+      let i = 0;
+      nowPlaying.stop();
+      demoTrackTimer = setInterval(() => nowPlaying.set(DEMO_TRACKS[i++ % DEMO_TRACKS.length]), 12000);
+      setTimeout(() => demo && nowPlaying.set(DEMO_TRACKS[i++ % DEMO_TRACKS.length]), 6500);
+    }
   } else {
+    nowPlaying.set(null);
+    syncMedia();
     detector.update(null);
     if (bridge.available) bridge.listDevices();
     else detector.start();
@@ -237,6 +267,7 @@ function cleanPrefsPatch(p) {
   const out = {};
   if (oneOf(p.theme, ['system', 'dark', 'light'])) out.theme = p.theme;
   if (p.island && bool(p.island.enabled) !== undefined) out.island = { ...store.prefs().island, enabled: p.island.enabled };
+  if (p.media && bool(p.media.enabled) !== undefined) out.media = { enabled: p.media.enabled };
   return out;
 }
 
@@ -256,6 +287,7 @@ ipcMain.handle('device:set', async (_e, rawPatch) => {
 
 ipcMain.handle('prefs:set', (_e, rawPatch) => {
   store.setPrefs(cleanPrefsPatch(rawPatch));
+  syncMedia();
   if (!store.prefs().island.enabled) island.hide();
   broadcast();
   return state();
@@ -354,6 +386,12 @@ app.whenReady().then(() => {
     broadcast();
   });
   controller.on('status', broadcast);
+
+  nowPlaying.on('track', (track, { changed }) => {
+    broadcast();
+    if (changed && track && detector.current && store.prefs().media?.enabled) islandEvent('track', detector.current, track);
+  });
+  syncMedia();
   controller.on('log', (m) => process.env.NOTHING_DEBUG && console.log('[control]', m));
 
   bridge.on('devices', (list) => !demo && detector.fromBridgeList(list));
@@ -375,6 +413,7 @@ app.whenReady().then(() => {
 
 // Never leave a bud ringing after the app goes away.
 app.on('before-quit', () => {
+  nowPlaying.stop();
   if (controller?.open) controller.ring('both', false);
   setTimeout(() => bridge?.stop(), 300);
 });

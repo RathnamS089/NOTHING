@@ -34,6 +34,7 @@ const GLYPH = { anc: '111101111', transparency: '010111010', off: '000010000' };
 let state = null;
 let lastJson = '';
 let gestureSide = 'left';
+let npGlyph = null;
 
 const set = (patch) => nx.setDevice(patch).then(update);
 const glyph = (mode) => `<span class="glyph${mode === 'anc' ? ' red' : ''}">${[...GLYPH[mode]].map((b) => `<i class="${b === '1' ? 'on' : ''}"></i>`).join('')}</span>`;
@@ -174,6 +175,7 @@ function deviceView() {
     <h2>Island &amp; app</h2>
     <div class="rows">
       <div class="row"><div class="txt">Dynamic island<small>Show the island when buds connect</small></div>${sw('island', prefs.island.enabled)}</div>
+      <div class="row"><div class="txt">Song glyphs<small>Reads the playing track's title on this computer to draw its glyph. Never saved or sent anywhere.</small></div>${sw('media', prefs.media?.enabled !== false)}</div>
       <div class="row"><div class="txt">Appearance</div>
         <select data-theme-select>${['system', 'dark', 'light'].map((t) => `<option value="${t}"${prefs.theme === t ? ' selected' : ''}>${t[0].toUpperCase() + t.slice(1)}</option>`).join('')}</select>
       </div>
@@ -193,7 +195,14 @@ function deviceView() {
       : 'This build has no Bluetooth helper for your system, so changes are only saved on this computer.'}</div>`}
   </section>`;
 
-  return `<div class="grid">${hero}<div class="panels">${noise}${eq}${bass}${gestures}${more}${find}${devices}${island}${info}</div></div>`;
+  const t = state.track;
+  const playing = t ? `<section class="card nowplaying" id="playing">
+    <h2>Now playing <span class="label">${esc(t.source)}${t.status === 'paused' ? ' · paused' : ''}</span></h2>
+    <canvas id="npGlyph" aria-label="Glyph for ${esc(t.title)}"></canvas>
+    <div class="np-txt"><span class="np-title">${esc(t.title)}</span><span class="np-artist">${esc(t.artist)}</span></div>
+  </section>` : '';
+
+  return `<div class="grid">${hero}<div class="panels">${playing}${noise}${eq}${bass}${gestures}${more}${find}${devices}${island}${info}</div></div>`;
 }
 
 function render() {
@@ -201,8 +210,21 @@ function render() {
   document.documentElement.dataset.brand = d?.model?.brand || 'nothing';
   NX.applyTheme(state?.prefs);
   const top = root.scrollTop;
+  npGlyph?.destroy();
+  npGlyph = null;
   root.innerHTML = d ? deviceView() : emptyView();
   root.scrollTop = top;
+  const canvas = document.getElementById('npGlyph');
+  if (canvas) {
+    const dark = getComputedStyle(document.body).getPropertyValue('--text').trim() !== '#000000';
+    npGlyph = new NXGlyph.Glyph(canvas, {
+      cols: 24, rows: 8,
+      accent: getComputedStyle(document.body).getPropertyValue('--accent').trim(),
+      on: dark ? '#ffffff' : '#000000',
+      off: dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
+    });
+    npGlyph.set(state.track);
+  }
 }
 
 function update(s) {
@@ -232,7 +254,8 @@ root.addEventListener('click', (e) => {
     });
   } else if (t.dataset.toggle) {
     const k = t.dataset.toggle;
-    if (k === 'island') nx.setPrefs({ island: { ...state.prefs.island, enabled: !state.prefs.island.enabled } }).then(update);
+    if (k === 'media') nx.setPrefs({ media: { enabled: !(state.prefs.media?.enabled !== false) } }).then(update);
+    else if (k === 'island') nx.setPrefs({ island: { ...state.prefs.island, enabled: !state.prefs.island.enabled } }).then(update);
     else if (k === 'bass') set({ bass: { ...s.bass, on: !s.bass.on } });
     else set({ [k]: !s[k] });
   }

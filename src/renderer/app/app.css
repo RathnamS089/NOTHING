@@ -141,3 +141,9 @@ select {
   .panels { display: block; columns: 2; column-gap: 12px; }
   .panels .card { margin-bottom: 12px; }
 }
+
+/* Now playing: the song's glyph, large */
+.nowplaying canvas { width: 100%; aspect-ratio: 3 / 1; display: block; }
+.np-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.np-title { font-family: var(--font-dot); font-weight: 900; font-size: 22px; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.np-artist { color: var(--text-2); font-size: 13px; }

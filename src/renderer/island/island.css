@@ -27,10 +27,11 @@ body { font-family: var(--font-ui); color: #fff; }
 #pill.goodbye { width: 280px; height: 38px; border-radius: 19px; }
 .mac #pill.goodbye { width: 360px; height: 36px; }
 
-.compact, .expanded, .goodbye { position: absolute; inset: 0; transition: opacity 0.25s var(--ease), filter 0.35s var(--ease), transform 0.45s var(--spring); }
+.compact, .expanded, .goodbye, .trackview { position: absolute; inset: 0; transition: opacity 0.25s var(--ease), filter 0.35s var(--ease), transform 0.45s var(--spring); }
 #pill:not(.compact) .compact,
 #pill:not(.expanded) .expanded,
-#pill:not(.goodbye) .goodbye { opacity: 0; filter: blur(6px); pointer-events: none; transform: scale(0.96); }
+#pill:not(.goodbye) .goodbye,
+#pill:not(.track) .trackview { opacity: 0; filter: blur(6px); pointer-events: none; transform: scale(0.96); }
 .expanded { transition-delay: 0.08s; }
 
 /* Compact */
@@ -99,3 +100,28 @@ body { font-family: var(--font-ui); color: #fff; }
 .swap:hover { background: #2a2a2a; }
 .swap:active { transform: scale(0.95); }
 .swap[disabled] { opacity: 0.5; }
+
+/* ---------- Song glyphs ---------- */
+.mini-glyph { width: 34px; height: 14px; display: none; }
+#pill.has-media .mini-glyph { display: block; }
+#pill.has-media .compact .anc-glyph { display: none; }
+
+/* Expanded grows a media strip on top when something is playing. */
+.row.media { display: none; gap: 14px; padding: 8px 10px; margin: -4px -6px 0; background: #0d0d0d; border-radius: 18px; }
+#pill.has-media .row.media { display: flex; }
+#pill.expanded.has-media { height: 248px; }
+.mac #pill.expanded.has-media { height: 268px; }
+#eGlyph { width: 72px; height: 40px; flex: none; }
+
+.mtxt { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
+.mtxt .label { font-size: 9px; color: #8c8c8c; }
+.mtitle { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.martist { font-size: 12px; color: #8c8c8c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* The moment a track changes: a wide pill with the full glyph. */
+#pill.track { width: 440px; height: 84px; border-radius: 42px; }
+.mac #pill.track { height: 116px; border-radius: 0 0 44px 44px; }
+.trackview { display: flex; align-items: center; gap: 16px; padding: 0 26px 0 22px; }
+.mac .trackview { padding-top: 32px; }
+#tGlyph { width: 128px; height: 48px; flex: none; }
+.trackview .mtitle { font-size: 20px; line-height: 1.1; text-transform: uppercase; }

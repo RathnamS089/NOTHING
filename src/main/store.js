@@ -22,6 +22,8 @@ const DEFAULT_DEVICE = {
 const DEFAULT_PREFS = {
   island: { enabled: true, autoCollapseMs: 5000 },
   theme: 'system', // 'system' | 'dark' | 'light'
+  // Song glyphs read the current track title locally; never stored or sent anywhere.
+  media: { enabled: true },
 };
 
 class Store {

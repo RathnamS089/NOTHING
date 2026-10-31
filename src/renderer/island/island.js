@@ -7,6 +7,15 @@ let state = null;
 let collapseTimer = null;
 let hideTimer = null;
 let hovering = false;
+let trackTimer = null;
+
+// Three renderings of the same song glyph, at different sizes.
+const accent = () => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#d71921';
+const glyphs = {
+  mini: new NXGlyph.Glyph($('cMedia'), { cols: 9, rows: 3 }),
+  strip: new NXGlyph.Glyph($('eGlyph'), { cols: 11, rows: 6 }),
+  big: new NXGlyph.Glyph($('tGlyph'), { cols: 16, rows: 6 }),
+};
 
 const ANC_ORDER = ['anc', 'transparency', 'off'];
 // Device names come from Bluetooth and can contain anything; never inject them raw.
@@ -15,7 +24,21 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const GLYPH = { anc: '111101111', transparency: '010111010', off: '000010000' };
 
 function setMode(mode) {
-  pill.className = mode;
+  pill.className = mode + (state?.track ? ' has-media' : '');
+}
+
+function renderTrack() {
+  const t = state?.track;
+  pill.classList.toggle('has-media', !!t);
+  for (const g of Object.values(glyphs)) g.set(t, accent());
+  if (!t) return;
+  const src = `${t.source}${t.status === 'paused' ? ' · paused' : ''}`;
+  $('eSrc').textContent = src;
+  $('tSrc').textContent = src;
+  $('eTitle').textContent = t.title;
+  $('tTitle').textContent = t.title;
+  $('eArtist').textContent = t.artist;
+  $('tArtist').textContent = t.artist;
 }
 
 function glyph(mode) {
@@ -74,7 +97,7 @@ function expand(autoCollapse = true) {
 pill.addEventListener('mouseenter', () => {
   hovering = true;
   nx.islandInteractive(true);
-  if (pill.classList.contains('compact')) expand(false);
+  if (pill.classList.contains('compact') || pill.classList.contains('track')) expand(false);
 });
 
 pill.addEventListener('mouseleave', () => {
@@ -107,11 +130,22 @@ nx.onState((s) => {
   state = s;
   NX.applyTheme(s.prefs);
   render();
+  renderTrack();
+  // Track ended while showing it: fall back to the compact pill.
+  if (!s.track && pill.classList.contains('track')) setMode('compact');
 });
 
 nx.onIsland(async (ev) => {
   state = await nx.getState();
-  if (ev.type === 'connected') {
+  if (ev.type === 'track') {
+    // Show the new song's glyph for a moment, unless the user is mid-interaction.
+    if (hovering || pill.classList.contains('hidden') || pill.classList.contains('goodbye')) return;
+    renderTrack();
+    clearTimeout(collapseTimer);
+    clearTimeout(trackTimer);
+    setMode('track');
+    trackTimer = setTimeout(() => pill.classList.contains('track') && setMode('compact'), 4500);
+  } else if (ev.type === 'connected') {
     render();
     // Start from a notch-sized sliver, then bloom open.
     setMode('hidden');
@@ -127,4 +161,4 @@ nx.onIsland(async (ev) => {
   }
 });
 
-nx.getState().then((s) => { state = s; NX.applyTheme(s.prefs); render(); });
+nx.getState().then((s) => { state = s; NX.applyTheme(s.prefs); render(); renderTrack(); });
