@@ -7,6 +7,8 @@
 //        {"op":"connect","address":"AA:BB:.."}   -> SDP lookup + open RFCOMM
 //        {"op":"write","hex":"5560..."}           -> write bytes to open channel
 //        {"op":"close"}                           -> close channel
+//        {"op":"connectDevice","address":".."}    -> bring up the audio link
+//        {"op":"disconnectDevice","address":".."} -> drop it
 // stdout {"ev":"devices","list":[...]}  {"ev":"open","channel":15}
 //        {"ev":"data","hex":"..."}       {"ev":"closed"}  {"ev":"error","msg":"..."}
 
@@ -76,6 +78,28 @@ final class Link: NSObject, IOBluetoothRFCOMMChannelDelegate {
             ["name": d.name ?? "", "address": (d.addressString ?? "").uppercased().replacingOccurrences(of: "-", with: ":"), "connected": d.isConnected()]
         }
         emit(["ev": "devices", "list": list])
+    }
+
+    // MARK: audio link (device switching)
+
+    func connectDevice(_ address: String) {
+        guard let d = IOBluetoothDevice(addressString: address) else {
+            return emit(["ev": "device", "address": address, "ok": false])
+        }
+        if d.isConnected() { return emit(["ev": "device", "address": address, "ok": true]) }
+        let r = d.openConnection(self)
+        if r != kIOReturnSuccess { emit(["ev": "device", "address": address, "ok": false]) }
+    }
+
+    @objc func connectionComplete(_ d: IOBluetoothDevice!, status: IOReturn) {
+        emit(["ev": "device", "address": (d.addressString ?? "").uppercased().replacingOccurrences(of: "-", with: ":"), "ok": status == kIOReturnSuccess])
+    }
+
+    func disconnectDevice(_ address: String) {
+        guard let d = IOBluetoothDevice(addressString: address) else { return }
+        if d.addressString == device?.addressString { closeChannel() }
+        if d.isConnected() { d.closeConnection() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { self.emitDevices() }
     }
 
     // MARK: RFCOMM
@@ -185,6 +209,8 @@ func handle(_ line: String) {
     case "connect": link.connect(msg["address"] as? String ?? "")
     case "write": link.write(msg["hex"] as? String ?? "")
     case "close": link.closeChannel()
+    case "connectDevice": link.connectDevice(msg["address"] as? String ?? "")
+    case "disconnectDevice": link.disconnectDevice(msg["address"] as? String ?? "")
     default: emit(["ev": "error", "msg": "unknown op \(op)"])
     }
 }
