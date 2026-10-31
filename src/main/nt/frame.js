@@ -8,7 +8,8 @@
 //   5    2     payload length (LE)
 //   7    1     sequence number, echoed back by the buds in their reply
 //   8    n     payload
-//   8+n  2     CRC-16/ARC over bytes 0..8+n-1 (LE), only when the CRC flag is set
+//   8+n  2     CRC-16/ARC (LE), only when the CRC flag is set: over bytes 0..8+n-1
+//              in requests, over the payload alone in replies from the buds
 
 const SOF = 0x55;
 const REQUEST_FLAGS = 0x0160;
@@ -69,7 +70,10 @@ class Decoder {
       if (this.buf.length < total) break;
 
       const raw = this.buf.subarray(0, total);
-      if (hasCrc && raw.readUInt16LE(total - 2) !== crc16(raw, total - 2)) {
+      // Requests carry a CRC over the whole frame; replies from the buds carry
+      // one over the payload only. Accept either.
+      const got = hasCrc ? raw.readUInt16LE(total - 2) : 0;
+      if (hasCrc && got !== crc16(raw, total - 2) && got !== crc16(raw.subarray(HEADER, HEADER + len))) {
         this.buf = this.buf.subarray(1);
         continue;
       }

@@ -46,3 +46,20 @@ test('custom eq layout: flat curve and round trip', () => {
   assert.deepStrictEqual(FEATURES.eqCustom.decode(curve), [4, -2, 3]);
   assert.strictEqual(curve.readFloatLE(1), -4);
 });
+
+test('real CMF Buds 2a battery reply (payload-only CRC)', () => {
+  const [f] = new Decoder().push(Buffer.from('556001074005000102026403641cbc', 'hex'));
+  assert.ok(f, 'frame decoded');
+  assert.strictEqual(f.kind, KIND.REPLY);
+  const b = FEATURES.battery.decode(f.payload);
+  assert.deepStrictEqual([b.left, b.right, b.case], [100, 100, null]);
+});
+
+test('real CMF Buds 2a custom EQ reply is decoded by band type', () => {
+  const p = Buffer.from('030000c0c000000000000000000000000000010000c0c00000000000000000020000c0400000000000000000', 'hex');
+  assert.deepStrictEqual(FEATURES.eqCustom.decode(p), [0, -6, 6]);
+});
+
+test('real CMF Buds 2a in-ear reply (unrelated list) is ignored', () => {
+  assert.strictEqual(FEATURES.inEar.decode(Buffer.from('08070009000a000c000e000f0015001600', 'hex')), null);
+});

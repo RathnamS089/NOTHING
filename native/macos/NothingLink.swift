@@ -113,17 +113,39 @@ final class Link: NSObject, IOBluetoothRFCOMMChannelDelegate {
         if !d.isConnected() {
             return emit(["ev": "error", "msg": "device not connected"])
         }
+        // macOS caches SDP records for paired devices; use them when present.
+        if cachedChannel(d) != nil { return sdpQueryComplete(d, status: kIOReturnSuccess) }
+        sdpDone = false
         let r = d.performSDPQuery(self, uuids: [serviceUUID])
-        if r != kIOReturnSuccess { sdpQueryComplete(d, status: r) }
+        emit(["ev": "log", "msg": "sdp query started \(r)"])
+        if r != kIOReturnSuccess { return sdpQueryComplete(d, status: r) }
+        // Some buds never answer SDP while streaming audio; don't wait forever.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+            if !self.sdpDone && self.device == d { self.sdpQueryComplete(d, status: kIOReturnTimeout) }
+        }
+    }
+
+    var sdpDone = true
+
+    func cachedChannel(_ d: IOBluetoothDevice) -> BluetoothRFCOMMChannelID? {
+        var id: BluetoothRFCOMMChannelID = 0
+        if let rec = d.getServiceRecord(for: serviceUUID), rec.getRFCOMMChannelID(&id) == kIOReturnSuccess { return id }
+        // Fall back to scanning every cached record for the vendor UUID.
+        for rec in (d.services as? [IOBluetoothSDPServiceRecord]) ?? [] where rec.hasService(from: [serviceUUID]) {
+            if rec.getRFCOMMChannelID(&id) == kIOReturnSuccess { return id }
+        }
+        return nil
     }
 
     @objc func sdpQueryComplete(_ d: IOBluetoothDevice!, status: IOReturn) {
-        var id: BluetoothRFCOMMChannelID = 0
-        if let rec = d.getServiceRecord(for: serviceUUID), rec.getRFCOMMChannelID(&id) == kIOReturnSuccess {
+        if sdpDone && status == kIOReturnTimeout { return }
+        sdpDone = true
+        if let id = cachedChannel(d) {
             pending = [id] + fallbackChannels.filter { $0 != id }
         } else {
             pending = fallbackChannels
         }
+        emit(["ev": "log", "msg": "sdp complete \(status), channels \(pending)"])
         openNext()
     }
 
@@ -134,10 +156,12 @@ final class Link: NSObject, IOBluetoothRFCOMMChannelDelegate {
         let id = pending.removeFirst()
         var ch: IOBluetoothRFCOMMChannel?
         let r = d.openRFCOMMChannelAsync(&ch, withChannelID: id, delegate: self)
+        emit(["ev": "log", "msg": "open channel \(id) -> \(r)"])
         if r != kIOReturnSuccess { openNext() }
     }
 
     func rfcommChannelOpenComplete(_ ch: IOBluetoothRFCOMMChannel!, status error: IOReturn) {
+        emit(["ev": "log", "msg": "open complete \(error)"])
         if error == kIOReturnSuccess {
             channel = ch
             emit(["ev": "open", "channel": Int(ch.getID())])

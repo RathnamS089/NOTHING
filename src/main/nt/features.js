@@ -81,11 +81,17 @@ const FEATURES = {
   eqCustom: {
     read: 0x44,
     write: 0x41,
+    // Replies list bands in their own order, so identify each by its filter-type byte.
     decode(p) {
-      if (p.length < 5 + EQ_BANDS.length * EQ_BAND_SIZE) return null;
+      const count = p[0];
+      if (!count || p.length < 5 + count * EQ_BAND_SIZE) return null;
       const gains = {};
-      EQ_BANDS.forEach((b, i) => { gains[b.key] = Math.round(p.readFloatLE(5 + i * EQ_BAND_SIZE + 1)); });
-      return [gains.bass, gains.mid, gains.treble];
+      for (let i = 0; i < count; i++) {
+        const at = 5 + i * EQ_BAND_SIZE;
+        const band = EQ_BANDS.find((b) => b.type === p[at]);
+        if (band) gains[band.key] = Math.round(p.readFloatLE(at + 1));
+      }
+      return ['bass', 'mid', 'treble'].every((k) => k in gains) ? [gains.bass, gains.mid, gains.treble] : null;
     },
     encode([bass, mid, treble]) {
       const gain = { bass, mid, treble };
@@ -121,7 +127,9 @@ const FEATURES = {
   inEar: {
     read: 0x0e,
     write: 0x04,
-    decode: (p) => (p.length ? lastByte(p.subarray(0, Math.min(p.length, 3))) === 1 : null),
+    // Expected [0x01, state] or [0x02, 0x01, state]; some CMF firmware answers this
+    // command with an unrelated list, which must not be read as "off".
+    decode: (p) => (p.length >= 2 && p.length <= 4 ? lastByte(p.subarray(0, Math.min(p.length, 3))) === 1 : null),
     encode: (on) => [0x01, 0x01, on ? 1 : 0],
   },
 
