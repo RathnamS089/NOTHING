@@ -8,7 +8,7 @@ An AirPods-style experience for Nothing and CMF earbuds on macOS, Windows and Li
 
 ```bash
 npm install      # on macOS this also builds the Bluetooth helper
-npm start        # watch Bluetooth for real Nothing / CMF buds
+npm start        # watch Bluetooth for real Nothing / CMF buds (npm run dev does the same)
 npm run demo     # simulate a connected CMF Buds 2a (macOS/Linux shell)
 npm run demo:win # same, on Windows cmd
 npm test
