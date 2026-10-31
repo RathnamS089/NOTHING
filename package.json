@@ -50,6 +50,8 @@
       "target": [
         "dmg"
       ],
+      "identity": "-",
+      "hardenedRuntime": false,
       "extendInfo": {
         "LSUIElement": true,
         "NSBluetoothAlwaysUsageDescription": "Nothing Island talks to your Nothing and CMF earbuds over Bluetooth."

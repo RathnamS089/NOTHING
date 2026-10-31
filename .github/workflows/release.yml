@@ -8,8 +8,9 @@
 #    pre-release with all installers attached. Review it on GitHub and press
 #    Publish yourself; nothing goes out automatically.
 #
-# Builds are unsigned for now (no Apple/Windows certificates), so testers see
-# Gatekeeper / SmartScreen warnings. See RELEASING.md.
+# macOS builds are ad-hoc signed and Windows builds unsigned (no Apple/Windows
+# certificates yet), so testers see Gatekeeper / SmartScreen warnings.
+# See RELEASING.md.
 name: Build & release
 
 on:
@@ -54,8 +55,11 @@ jobs:
             args: --linux --x64
     runs-on: ${{ matrix.os }}
     env:
-      # Unsigned builds: stop electron-builder hunting for certificates.
-      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      # macOS builds are ad-hoc signed (package.json build.mac.identity "-").
+      # electron-builder skips signing on PRs by default, which would ship an
+      # app whose fuse-patched Electron Framework has a broken signature;
+      # ad-hoc signing uses no secrets, so it's safe to keep on for PRs.
+      CSC_FOR_PULL_REQUEST: 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -79,6 +83,14 @@ jobs:
       - name: Package
         shell: bash
         run: npx electron-builder ${{ matrix.args }} --publish never
+
+      - name: Verify macOS signatures
+        if: matrix.name == 'mac'
+        run: |
+          for app in dist/mac*/*.app; do
+            codesign --verify --deep --strict --verbose=2 "$app"
+            codesign --verify --strict "$app/Contents/Resources/native/bin/nothing-link"
+          done
 
       - uses: actions/upload-artifact@v4
         with:

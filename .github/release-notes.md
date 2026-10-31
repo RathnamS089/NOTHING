@@ -13,9 +13,9 @@
 
 `SHA256SUMS.txt` lets you check that a download wasn't tampered with.
 
-## These builds are unsigned
+## These builds aren't notarized yet
 
-- **macOS:** the first time, right-click the app, choose **Open**, then **Open** again. If macOS says the app is "damaged", run `xattr -dr com.apple.quarantine "/Applications/Nothing Island.app"`. Allow Bluetooth when asked.
+- **macOS:** the app is ad-hoc signed but not notarized by Apple. Drag it to Applications and open it once; macOS says it "could not verify" the app. Then go to **System Settings → Privacy & Security**, scroll down, click **Open Anyway** and confirm. You only do this once. Allow Bluetooth when asked. (If you prefer the terminal: `xattr -dr com.apple.quarantine "/Applications/Nothing Island.app"`.)
 - **Windows:** SmartScreen shows "Windows protected your PC". Click **More info**, then **Run anyway**.
 - **Linux:** no warnings, but install from the terminal:
   - Ubuntu/Debian: `sudo apt install ./Nothing-Island-*-amd64.deb`

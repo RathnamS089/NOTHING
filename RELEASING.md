@@ -28,8 +28,35 @@ The version shown in the app comes from the tag. `package.json` doesn't need edi
 
 Only people with access to the repo can download releases from a private repo. To share with testers, either add them as collaborators (read access is enough) or make the repo public when you're ready.
 
-## Signing (later)
+## macOS signing
 
-Builds are unsigned, so testers see Gatekeeper/SmartScreen warnings. When you want those gone:
-- **macOS:** an Apple Developer ID certificate plus notarization. Add `CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID` as repo secrets, and remove `CSC_IDENTITY_AUTO_DISCOVERY: 'false'`.
-- **Windows:** a code-signing certificate (or Azure Trusted Signing), added as `WIN_CSC_LINK` / `WIN_CSC_KEY_PASSWORD`.
+### Now: ad-hoc signing
+
+`package.json` → `build.mac` has `"identity": "-"` and `"hardenedRuntime": false`. electron-builder then signs every piece of the app in the right order (Electron framework, the four helper apps, the `nothing-link` Bluetooth helper, then the app itself). CI runs `codesign --verify --deep --strict` on both Mac builds and fails if anything is wrong.
+
+**Don't turn signing off.** The `electronFuses` setting patches bytes inside `Electron Framework`. That invalidates Electron's original signature, so the framework has to be re-signed afterwards. An unsigned build (for example with `CSC_IDENTITY_AUTO_DISCOVERY=false`) has a broken framework signature. On Apple Silicon the kernel then kills the app at launch (`zsh: killed`) and Finder says it's "damaged". No `xattr` or `codesign --deep` run afterwards fixes that properly.
+
+Ad-hoc apps still aren't trusted by Gatekeeper: testers use **Privacy & Security → Open Anyway** once. Each build also has a new identity, so macOS may ask for Bluetooth permission again after an update.
+
+### Later: Developer ID + notarization (no warnings for anyone)
+
+1. Join the Apple Developer Program ($99/year). Create a **Developer ID Application** certificate and export it as a `.p12` file.
+2. Add repo secrets:
+   - `CSC_LINK` (the base64 `.p12`)
+   - `CSC_KEY_PASSWORD`
+   - `APPLE_ID`
+   - `APPLE_APP_SPECIFIC_PASSWORD` (from appleid.apple.com)
+   - `APPLE_TEAM_ID`
+
+   Pass them to the Package step as `env`.
+3. In `build.mac`:
+   - remove `"identity": "-"`
+   - set `"hardenedRuntime": true` and `"notarize": true`
+   - add `"entitlements"` and `"entitlementsInherit"` pointing at a plist with:
+     - `com.apple.security.cs.allow-jit` (V8 needs it)
+     - `com.apple.security.device.bluetooth` (the helper talks to the buds under the hardened runtime)
+4. Notarization adds roughly 2–10 minutes per build. The `.dmg` then opens with no warnings, and Bluetooth permission survives updates because the identity stays the same.
+
+## Windows signing (later)
+
+A code-signing certificate (or Azure Trusted Signing), added as `WIN_CSC_LINK` / `WIN_CSC_KEY_PASSWORD`. Until then, SmartScreen shows a warning.
