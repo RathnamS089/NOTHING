@@ -2,9 +2,9 @@
 
 Builds run on GitHub Actions ([.github/workflows/release.yml](.github/workflows/release.yml)).
 
-## Test builds (every push)
+## Test builds (every PR)
 
-Every push to a `feature/**` or `fix/**` branch, and every PR, runs the tests and builds all three platforms. Download the installers from the run page under **Artifacts**. They're kept for 14 days and are not public.
+Every pull request runs the tests and builds all three platforms, and so does **Actions → Build & release → Run workflow**. Pushing a branch without a PR doesn't build, which saves Actions minutes (macOS minutes count 10× on private repos). Download the installers from the run page under **Artifacts**. They're kept for 14 days and are not public.
 
 ## A tester release
 

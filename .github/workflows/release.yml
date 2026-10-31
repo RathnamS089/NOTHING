@@ -1,7 +1,9 @@
 # Builds Nothing Island for macOS, Windows and Linux.
 #
-#  - Every push to a feature/fix branch and every PR: test + build, with the
-#    installers kept as workflow artifacts for 14 days (nothing is published).
+#  - Every pull request (and the manual "Run workflow" button): test + build,
+#    with the installers kept as workflow artifacts for 14 days (nothing is
+#    published). Branch pushes alone don't build: macOS minutes count 10x on
+#    private repos, so builds wait until there's a PR.
 #  - Pushing a tag like v0.1.0-alpha.1: the same builds, then a DRAFT
 #    pre-release with all installers attached. Review it on GitHub and press
 #    Publish yourself; nothing goes out automatically.
@@ -12,7 +14,6 @@ name: Build & release
 
 on:
   push:
-    branches: ['feature/**', 'fix/**']
     tags: ['v*']
   pull_request:
   workflow_dispatch:
@@ -31,7 +32,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
       - run: npm ci
       - run: npm test
@@ -59,7 +60,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
 
       - name: Stamp version from tag
