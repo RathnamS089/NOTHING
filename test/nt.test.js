@@ -92,3 +92,20 @@ test('song glyphs are deterministic per track and differ between tracks', () => 
   const motifs = new Set(Array.from({ length: 40 }, (_, i) => spec({ title: `t${i}`, artist: '' }).motif));
   assert.strictEqual(motifs.size, 4);
 });
+
+test('web player tabs become tracks', () => {
+  const { parseBrowserTab } = require('../src/main/media/nowplaying');
+  assert.deepStrictEqual(parseBrowserTab('https://open.spotify.com/track/1', 'Blinding Lights • The Weeknd', 'Safari'),
+    { title: 'Blinding Lights', artist: 'The Weeknd', status: 'playing', source: 'Spotify · Safari' });
+  assert.strictEqual(parseBrowserTab('https://open.spotify.com/', 'Spotify – Web Player: Music for everyone', 'Safari'), null);
+  assert.strictEqual(parseBrowserTab('https://music.youtube.com/watch?v=x', 'Song', 'Chrome').source, 'YouTube Music · Chrome');
+  assert.strictEqual(parseBrowserTab('https://music.apple.com/in/album/x', 'Song by Artist - Apple Music', 'Safari').artist, 'Artist');
+});
+
+test('Spotify page titles (as Safari reports them) become tracks', () => {
+  const { parseBrowserTab } = require('../src/main/media/nowplaying');
+  const t = parseBrowserTab('https://open.spotify.com/album/x', 'Listen to death bed (coffee for your head) - Single by Powfu, beabadoobee | Spotify', 'Safari');
+  assert.deepStrictEqual([t.title, t.artist, t.status], ['death bed (coffee for your head)', 'Powfu, beabadoobee', 'unknown']);
+  const s = parseBrowserTab('https://open.spotify.com/track/x', 'Sunflower - song and lyrics by Post Malone, Swae Lee | Spotify', 'Safari');
+  assert.deepStrictEqual([s.title, s.artist], ['Sunflower', 'Post Malone, Swae Lee']);
+});

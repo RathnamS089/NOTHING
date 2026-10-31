@@ -18,6 +18,25 @@ const { EventEmitter } = require('events');
 const MAC_POLL_MS = 2500;
 const SEP = '\u001f'; // unit separator: can't appear in a title
 
+const MUSIC_URLS = ['youtube.com/watch', 'open.spotify.com', 'music.apple.com'];
+
+function browserScript(app, activeTab, titleProp) {
+  const isMusic = MUSIC_URLS.map((u) => `(u contains "${u}")`).join(' or ');
+  return `on isMusic(u)
+    return ${isMusic}
+  end isMusic
+  tell application "${app}"
+    if (count of windows) = 0 then return ""
+    set t to ${activeTab} of front window
+    if my isMusic(URL of t) then return (URL of t) & "${SEP}" & (${titleProp} of t)
+    repeat with w in windows
+      repeat with t in tabs of w
+        if my isMusic(URL of t) then return (URL of t) & "${SEP}" & (${titleProp} of t)
+      end repeat
+    end repeat
+  end tell`;
+}
+
 const MAC_PLAYERS = [
   {
     process: 'Music',
@@ -37,33 +56,47 @@ const MAC_PLAYERS = [
       end if
     end tell`,
   },
-  // Browsers: only the active tab, and only when it is a YouTube watch page.
+  // Browsers: the active tab if it is a music page, otherwise the first music tab
+  // anywhere (music usually plays in the background). URLs are matched inside
+  // the AppleScript, so titles of other tabs never leave the browser.
   ...['Google Chrome', 'Arc', 'Brave Browser', 'Microsoft Edge'].map((app) => ({
     process: app,
-    source: `YouTube · ${app.replace(' Browser', '')}`,
-    script: `tell application "${app}"
-      if (count of windows) > 0 then
-        set t to active tab of front window
-        if (URL of t) contains "youtube.com/watch" then return "unknown${SEP}" & (title of t) & "${SEP}"
-      end if
-    end tell`,
+    browser: app.replace(' Browser', '').replace('Google ', '').replace('Microsoft ', ''),
+    script: browserScript(app, 'active tab', 'title'),
   })),
-  {
-    process: 'Safari',
-    source: 'YouTube · Safari',
-    script: `tell application "Safari"
-      if (count of windows) > 0 then
-        set t to current tab of front window
-        if (URL of t) contains "youtube.com/watch" then return "unknown${SEP}" & (name of t) & "${SEP}"
-      end if
-    end tell`,
-  },
+  { process: 'Safari', browser: 'Safari', script: browserScript('Safari', 'current tab', 'name') },
 ];
 
 function run(cmd, args, timeout = 4000) {
   return new Promise((resolve) => {
     execFile(cmd, args, { timeout, windowsHide: true }, (err, stdout) => resolve(err ? '' : String(stdout)));
   });
+}
+
+// Turn a music tab's URL + title into a track. Web players only expose the page
+// title, so play state is unknown except where the title itself reveals it.
+function parseBrowserTab(url, title, browser) {
+  title = (title || '').trim();
+  if (/open\.spotify\.com/.test(url)) {
+    // Spotify titles the tab "Song • Artist" while playing, "Spotify – Web Player…" otherwise.
+    const m = title.match(/^(.*?)\s+•\s+(.*)$/);
+    if (m) return { title: m[1], artist: m[2], status: 'playing', source: `Spotify · ${browser}` };
+    // Otherwise it's the page's own title, e.g.
+    //   "Listen to death bed - Single by Powfu, beabadoobee | Spotify"
+    //   "Song Name - song and lyrics by Artist | Spotify"
+    const page = title.match(/^(?:Listen to\s+)?(.*?)(?:\s+-\s+(?:Single|EP|Album|song and lyrics|song))?\s+by\s+(.*?)\s*\|\s*Spotify$/i);
+    return page ? { title: page[1], artist: page[2], status: 'unknown', source: `Spotify · ${browser}` } : null;
+  }
+  if (/music\.apple\.com/.test(url)) {
+    const t = title.replace(/\s*[-–]\s*Apple Music.*$/i, '').replace(/^Apple Music.*$/i, '');
+    const m = t.match(/^(.*?)\s+by\s+(.*)$/i);
+    return t ? { title: m ? m[1] : t, artist: m ? m[2] : '', status: 'unknown', source: `Apple Music · ${browser}` } : null;
+  }
+  if (/youtube\.com\/watch/.test(url)) {
+    const music = /music\.youtube\.com/.test(url);
+    return { title, artist: '', status: 'unknown', source: `${music ? 'YouTube Music' : 'YouTube'} · ${browser}` };
+  }
+  return null;
 }
 
 // "Song name - YouTube" / "(12) Song name - YouTube" -> "Song name"
@@ -135,9 +168,17 @@ class NowPlaying extends EventEmitter {
         if (!running.has(p.process)) continue;
         const out = (await run('osascript', ['-e', p.script])).trim();
         if (!out) continue;
-        const [status, title, artist] = out.split(SEP);
-        const t = { status, title, artist, source: p.source };
-        if (/playing/i.test(status)) { best = t; break; } // a playing player wins
+        let t;
+        if (p.browser) {
+          const [url, title] = out.split(SEP);
+          t = parseBrowserTab(url, title, p.browser);
+          if (process.env.NOTHING_DEBUG) console.log('[media]', p.browser, t ? 'matched' : 'no track');
+          if (!t) continue;
+        } else {
+          const [status, title, artist] = out.split(SEP);
+          t = { status, title, artist, source: p.source };
+        }
+        if (/playing/i.test(t.status) || /kPSP/.test(t.status)) { best = t; break; } // a playing player wins
         best ||= t;
       }
       if (this.running) this.set(best);
@@ -211,4 +252,4 @@ while ($true) {
   }
 }
 
-module.exports = { NowPlaying, cleanYouTubeTitle, normalise };
+module.exports = { NowPlaying, cleanYouTubeTitle, normalise, parseBrowserTab };
