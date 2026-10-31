@@ -1,31 +1,41 @@
 # Nothing Island
 
-An AirPods-style experience for Nothing and CMF earbuds on macOS and Windows. When your buds connect, a Dynamic Island grows out of the top of the screen and shows battery and noise control. Click **Customise** to open a resizable companion app in the style of Nothing X.
+An AirPods-style experience for Nothing and CMF earbuds on macOS, Windows and Linux. When your buds connect, a Dynamic Island grows out of the top of the screen and shows battery and noise control. Click **Customise** to open a resizable companion app in the style of Nothing X.
 
-## Run
+**Download:** [Releases](https://github.com/RathnamS089/NOTHING/releases). The release notes cover which file to pick and first-launch steps.
+
+## Run from source
 
 ```bash
-npm install
+npm install      # on macOS this also builds the Bluetooth helper
 npm start        # watch Bluetooth for real Nothing / CMF buds
 npm run demo     # simulate a connected CMF Buds 2a (macOS/Linux shell)
 npm run demo:win # same, on Windows cmd
+npm test
 ```
 
-The app lives in the menu bar (macOS) or system tray (Windows). The tray menu can show the island again, turn it off, or switch the simulated device on and off.
+The app lives in the menu bar (macOS) or system tray (Windows/Linux).
 
-## How it works
+## What works
 
-| Piece | File |
-| --- | --- |
-| Bluetooth detection (macOS `system_profiler`, Windows PnP via PowerShell), polled every 3 s | `src/main/detector.js` |
-| Model catalog: Ear (1/2/3/a/stick/open), Headphone (1), CMF Buds family. Matched by name or by Nothing's `2C:BE:EE` MAC prefix | `src/main/devices.js` |
-| Island window: transparent, always on top, click-through except on the pill | `src/renderer/island/` |
-| Companion window: phone layout below 760 px wide, two columns above that, two card columns above 1180 px | `src/renderer/app/` |
-| Per-device settings saved as JSON in the user-data folder | `src/main/store.js` |
-| Earbud command channel (stub) | `src/main/protocol.js` |
+| | macOS | Linux | Windows |
+|---|---|---|---|
+| Detect Nothing/CMF buds, island pop-up | ✅ | ⚠️ untested | ⚠️ untested |
+| Battery (per bud), ANC, EQ, Ultra Bass, low lag, find my buds | ✅ | ⚠️ untested | ❌ not yet |
+| Quick-switch between Nothing devices | ✅ | ⚠️ untested | ❌ not yet |
+| Song glyphs / album cover dots | ✅ | ⚠️ untested | glyphs only, untested |
+
+Controls are sent to the buds over Nothing's RFCOMM channel through a small native helper: Swift/IOBluetooth on macOS, Python/BlueZ on Linux. They're tested on a CMF Buds 2a. Windows has no helper yet, so it only detects the buds and shows the island.
 
 ## Current limits
 
-- **Controls aren't sent to the buds yet.** Nothing buds take ANC, EQ and gesture commands over a vendor RFCOMM (Serial Port) channel. Reaching it needs a native bridge (IOBluetooth on macOS, `Windows.Devices.Bluetooth.Rfcomm` on Windows). For now `protocol.js` only saves the settings locally.
-- **Battery:** macOS only reports battery for some third-party buds. Windows reports a single overall level. Per-bud and case battery levels will come through the RFCOMM link.
-- The Windows detector has not been tested on Windows yet.
+- Only CMF Buds 2a has been tested with real hardware. Other models may show wrong or missing settings.
+- No Windows Bluetooth helper yet (needs `Windows.Devices.Bluetooth.Rfcomm`).
+- Songs playing in Firefox on macOS aren't detected.
+- Release builds are ad-hoc signed but not notarized, so macOS asks once for **Open Anyway**.
+
+## More
+
+- [ARCHITECTURE.md](ARCHITECTURE.md): how the pieces fit together
+- [RELEASING.md](RELEASING.md): CI builds, releases and signing
+- `scripts/mac-diagnose.sh`: collects info for macOS bug reports
