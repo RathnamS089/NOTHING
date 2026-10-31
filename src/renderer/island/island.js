@@ -9,6 +9,8 @@ let hideTimer = null;
 let hovering = false;
 
 const ANC_ORDER = ['anc', 'transparency', 'off'];
+// Device names come from Bluetooth and can contain anything; never inject them raw.
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 // 3x3 dot glyphs per noise mode
 const GLYPH = { anc: '111101111', transparency: '010111010', off: '000010000' };
 
@@ -55,7 +57,7 @@ function render() {
   // Quick switch: other paired Nothing devices, one tap to move the audio over.
   const others = (state.paired || []).filter((p) => !p.connected).slice(0, 2);
   $('eHint').innerHTML = others.length
-    ? others.map((p) => `<button class="swap" data-addr="${p.address}"${state.switching ? ' disabled' : ''}>${state.switching === p.address ? 'Switching…' : '⇄ ' + p.name.replace(/^(nothing|cmf)\s+/i, '')}</button>`).join('')
+    ? others.map((p) => `<button class="swap" data-addr="${esc(p.address)}"${state.switching ? ' disabled' : ''}>${state.switching === p.address ? 'Switching…' : '⇄ ' + esc(p.name.replace(/^(nothing|cmf)\s+/i, ''))}</button>`).join('')
     : b.left == null && b.right == null && b.main == null ? 'Battery not reported yet' : '';
   $('gName').textContent = d.model?.name || d.name;
 }

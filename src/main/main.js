@@ -1,5 +1,5 @@
 const path = require('path');
-const { app, BrowserWindow, Tray, Menu, ipcMain, screen, nativeImage } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, screen, nativeImage, session } = require('electron');
 const { Detector } = require('./detector');
 const { Store } = require('./store');
 const { Bridge } = require('./nt/bridge');
@@ -7,6 +7,16 @@ const { Controller } = require('./nt/controller');
 
 const isMac = process.platform === 'darwin';
 const RENDERER = path.join(__dirname, '..', 'renderer');
+// Renderers only ever see the narrow `nx` bridge from preload.js: no Node, no
+// direct IPC, sandboxed, and isolated from the preload's own context.
+const SECURE_PREFS = {
+  preload: path.join(__dirname, '..', 'preload.js'),
+  contextIsolation: true,
+  sandbox: true,
+  nodeIntegration: false,
+  webSecurity: true,
+  spellcheck: false,
+};
 const ISLAND_W = 520;
 const ISLAND_H = 260;
 
@@ -71,7 +81,7 @@ function createIsland() {
     alwaysOnTop: true,
     enableLargerThanScreen: true,
     ...(isMac ? { type: 'panel' } : { type: 'toolbar' }),
-    webPreferences: { preload: path.join(__dirname, '..', 'preload.js') },
+    webPreferences: SECURE_PREFS,
   });
   island.setAlwaysOnTop(true, 'screen-saver');
   island.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
@@ -96,7 +106,7 @@ function openApp(section) {
       ...(isMac
         ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 18, y: 18 } }
         : { frame: false }),
-      webPreferences: { preload: path.join(__dirname, '..', 'preload.js') },
+      webPreferences: SECURE_PREFS,
     });
     appWin.loadFile(path.join(RENDERER, 'app', 'index.html'), section ? { hash: section } : undefined);
     appWin.once('ready-to-show', () => appWin.show());
@@ -190,9 +200,50 @@ function createTray() {
 
 ipcMain.handle('state:get', () => state());
 
-ipcMain.handle('device:set', async (_e, patch) => {
+// Every IPC payload is untrusted: the renderer shows text from Bluetooth device
+// names and could be tricked, so only known keys with valid values get through.
+const oneOf = (v, list) => (list.includes(v) ? v : undefined);
+const int = (v, lo, hi) => (Number.isInteger(v) && v >= lo && v <= hi ? v : undefined);
+const bool = (v) => (typeof v === 'boolean' ? v : undefined);
+const GESTURE_KEYS = ['double', 'triple', 'hold'];
+const GESTURE_VALUES = ['play_pause', 'next', 'prev', 'volume_up', 'volume_down', 'noise_control', 'voice_assistant', 'none'];
+
+function cleanDevicePatch(p) {
+  if (!p || typeof p !== 'object') return {};
+  const out = {
+    anc: oneOf(p.anc, ['anc', 'transparency', 'off']),
+    ancLevel: oneOf(p.ancLevel, ['high', 'mid', 'low', 'adaptive', 'light', 'max']),
+    eqPreset: oneOf(p.eqPreset, ['balanced', 'bass', 'treble', 'voice', 'rock', 'electronic', 'pop', 'vocals', 'classical', 'custom']),
+    eqCustom: Array.isArray(p.eqCustom) && p.eqCustom.length === 3 && p.eqCustom.every((v) => int(v, -6, 6) !== undefined) ? p.eqCustom : undefined,
+    bass: p.bass && bool(p.bass.on) !== undefined && int(p.bass.level, 1, 5) !== undefined ? { on: p.bass.on, level: p.bass.level } : undefined,
+    lowLag: bool(p.lowLag),
+    inEar: bool(p.inEar),
+    dual: bool(p.dual),
+  };
+  if (p.gestures && typeof p.gestures === 'object') {
+    const g = {};
+    for (const side of ['left', 'right']) {
+      const src = p.gestures[side];
+      if (!src || typeof src !== 'object') continue;
+      g[side] = Object.fromEntries(GESTURE_KEYS.map((k) => [k, oneOf(src[k], GESTURE_VALUES)]).filter(([, v]) => v));
+    }
+    if (g.left && g.right) out.gestures = g;
+  }
+  return Object.fromEntries(Object.entries(out).filter(([, v]) => v !== undefined));
+}
+
+function cleanPrefsPatch(p) {
+  if (!p || typeof p !== 'object') return {};
+  const out = {};
+  if (oneOf(p.theme, ['system', 'dark', 'light'])) out.theme = p.theme;
+  if (p.island && bool(p.island.enabled) !== undefined) out.island = { ...store.prefs().island, enabled: p.island.enabled };
+  return out;
+}
+
+ipcMain.handle('device:set', async (_e, rawPatch) => {
   const d = detector.current;
-  if (!d) return state();
+  const patch = cleanDevicePatch(rawPatch);
+  if (!d || !Object.keys(patch).length) return state();
   const prev = store.device(d.address);
   const next = store.setDevice(d.address, patch);
   broadcast();
@@ -203,8 +254,8 @@ ipcMain.handle('device:set', async (_e, patch) => {
   return state();
 });
 
-ipcMain.handle('prefs:set', (_e, patch) => {
-  store.setPrefs(patch);
+ipcMain.handle('prefs:set', (_e, rawPatch) => {
+  store.setPrefs(cleanPrefsPatch(rawPatch));
   if (!store.prefs().island.enabled) island.hide();
   broadcast();
   return state();
@@ -213,7 +264,9 @@ ipcMain.handle('prefs:set', (_e, patch) => {
 ipcMain.handle('device:ring', (_e, side) => {
   const d = detector.current;
   if (!d || !controller.open) return { ok: false };
-  return controller.ring(side === 'stop' ? 'both' : side, side !== 'stop').then((ok) => ({ ok }));
+  if (side === 'stop') return controller.ring('both', false).then((ok) => ({ ok }));
+  if (!['left', 'right', 'both'].includes(side)) return { ok: false };
+  return controller.ring(side, true).then((ok) => ({ ok }));
 });
 
 // Quick switch: make `address` the only connected Nothing device.
@@ -221,7 +274,8 @@ ipcMain.on('tray-switch', (_e, address) => switchTo(address));
 ipcMain.handle('device:switch', (_e, address) => switchTo(address));
 
 async function switchTo(address) {
-  if (!bridge.available || demo) return { ok: false };
+  // Only ever touch paired Nothing devices, never an arbitrary address from the renderer.
+  if (!bridge.available || demo || switching || !detector.paired.some((d) => d.address === address)) return { ok: false };
   switching = address;
   broadcast();
   for (const d of detector.paired) if (d.connected && d.address !== address) bridge.disconnectDevice(d.address);
@@ -238,9 +292,10 @@ async function switchTo(address) {
   return { ok };
 }
 
-ipcMain.on('app:open', (_e, section) => openApp(section));
+ipcMain.on('app:open', (_e, section) => openApp(typeof section === 'string' && /^[a-z]{1,20}$/.test(section) ? section : undefined));
 
-ipcMain.on('island:interactive', (_e, on) => {
+ipcMain.on('island:interactive', (e, on) => {
+  if (e.sender !== island?.webContents) return;
   if (!island) return;
   if (on) island.setIgnoreMouseEvents(false);
   else island.setIgnoreMouseEvents(true, { forward: true });
@@ -256,7 +311,17 @@ ipcMain.on('win', (e, action) => {
   if (action === 'maximize') (w.isMaximized() ? w.unmaximize() : w.maximize());
 });
 
+// Nothing in this app loads remote content: block navigation, popups and
+// every permission (camera, mic, notifications, geolocation...).
+app.on('web-contents-created', (_e, contents) => {
+  contents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  contents.on('will-navigate', (e) => e.preventDefault());
+  contents.on('will-attach-webview', (e) => e.preventDefault());
+});
+
 app.whenReady().then(() => {
+  session.defaultSession.setPermissionRequestHandler((_wc, _perm, cb) => cb(false));
+  session.defaultSession.setPermissionCheckHandler(() => false);
   if (isMac) app.dock.hide();
   store = new Store();
   detector = new Detector();
@@ -308,7 +373,11 @@ app.whenReady().then(() => {
   if (process.env.NOTHING_DEMO) bridge.start();
 });
 
-app.on('before-quit', () => bridge?.stop());
+// Never leave a bud ringing after the app goes away.
+app.on('before-quit', () => {
+  if (controller?.open) controller.ring('both', false);
+  setTimeout(() => bridge?.stop(), 300);
+});
 
 // Menu-bar utility: closing the companion window must not quit.
 app.on('window-all-closed', (e) => e.preventDefault());

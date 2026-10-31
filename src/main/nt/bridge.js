@@ -26,7 +26,9 @@ function helperCommand() {
   }
   if (process.platform === 'linux') {
     const script = path.join(dir, 'linux', 'nothing_link.py');
-    return fs.existsSync(script) ? ['python3', ['-u', script]] : null;
+    // Absolute interpreter path so a `python3` earlier on PATH can't stand in for it.
+    const python = ['/usr/bin/python3', '/bin/python3'].find((p) => fs.existsSync(p));
+    return python && fs.existsSync(script) ? [python, ['-I', '-u', script]] : null;
   }
   return null; // Windows bridge not written yet; detection falls back to polling.
 }

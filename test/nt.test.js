@@ -63,3 +63,10 @@ test('real CMF Buds 2a custom EQ reply is decoded by band type', () => {
 test('real CMF Buds 2a in-ear reply (unrelated list) is ignored', () => {
   assert.strictEqual(FEATURES.inEar.decode(Buffer.from('08070009000a000c000e000f0015001600', 'hex')), null);
 });
+
+test('ring stop is addressed to the requested bud', () => {
+  const { ACTIONS } = require('../src/main/nt/features');
+  assert.deepStrictEqual(ACTIONS.ring.encode('left', true), [0x02, 1]);
+  assert.deepStrictEqual(ACTIONS.ring.encode('left', false), [0x02, 0]);
+  assert.deepStrictEqual(ACTIONS.ring.encode('right', false), [0x03, 0]);
+});

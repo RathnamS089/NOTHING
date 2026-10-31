@@ -7,6 +7,7 @@ const { FEATURES, ACTIONS, resolve } = require('./features');
 
 const REPLY_TIMEOUT_MS = 1500;
 const OPEN_TIMEOUT_MS = 8000;
+const RING_MAX_MS = 20000;
 
 // Read order on connect: what the island needs first.
 const SYNC_ORDER = ['battery', 'anc', 'eqPreset', 'eqCustom', 'bass', 'lowLag', 'inEar', 'firmware'];
@@ -55,6 +56,7 @@ class Controller extends EventEmitter {
   }
 
   detach() {
+    clearTimeout(this.ringTimer);
     if (this.open) this.bridge.closeChannel();
     this.markClosed();
     this.device = null;
@@ -166,8 +168,18 @@ class Controller extends EventEmitter {
     return results.every(Boolean);
   }
 
+  // Ringing keeps going until told otherwise, so every ring arms an auto-stop,
+  // and stopping always addresses each bud individually.
   async ring(side, on = true) {
-    return !!(await this.request(ACTIONS.ring.write, KIND.SET, ACTIONS.ring.encode(side, on)));
+    clearTimeout(this.ringTimer);
+    if (!on) {
+      const acks = [];
+      for (const s of ['left', 'right', 'both']) acks.push(await this.request(ACTIONS.ring.write, KIND.SET, ACTIONS.ring.encode(s, false)));
+      return acks.some(Boolean);
+    }
+    const ok = !!(await this.request(ACTIONS.ring.write, KIND.SET, ACTIONS.ring.encode(side, true)));
+    if (ok) this.ringTimer = setTimeout(() => this.ring(side, false), RING_MAX_MS);
+    return ok;
   }
 }
 

@@ -141,7 +141,8 @@ const FEATURES = {
 
 // Commands that don't map to a stored setting.
 const ACTIONS = {
-  ring: { write: 0x02, encode: (side, on = true) => [on ? SIDE[side] ?? SIDE.both : SIDE.right, on ? 1 : 0] },
+  // Ring and stop are addressed per bud: a stop for one side leaves the other ringing.
+  ring: { write: 0x02, encode: (side, on = true) => [SIDE[side] ?? SIDE.both, on ? 1 : 0] },
   gesture: {
     write: 0x03,
     encode: (side, type, action) => [0x01, SIDE[side], 0x01, GESTURE_TYPE[type], GESTURE_ACTION[action]],
