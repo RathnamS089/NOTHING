@@ -14,6 +14,27 @@ echo "== System"
 sw_vers | tr '\n' ' '; echo
 echo "cpu: $(uname -m)  translated: $(sysctl -n sysctl.proc_translated 2>/dev/null || echo 0)"
 
+echo; echo "== Bluetooth devices (address shortened to the maker prefix)"
+# Mirrors src/main/devices.js: a device counts if it's connected AND its name
+# mentions Nothing/CMF/Ear/Headphone or its address has Nothing's 2C:BE:EE prefix.
+system_profiler SPBluetoothDataType -json 2>/dev/null | /usr/bin/osascript -l JavaScript -e '
+function run(argv) {
+  const data = JSON.parse($.NSString.alloc.initWithDataEncoding($.NSFileHandle.fileHandleWithStandardInput.readDataToEndOfFile, 4).js);
+  const hint = /\b(nothing|cmf)\b|^ear\s*(\(|$)|^headphone\s*\(/i;
+  const out = [];
+  for (const c of data.SPBluetoothDataType || []) {
+    for (const [key, state] of [["device_connected", "CONNECTED"], ["device_not_connected", "paired"]]) {
+      for (const e of c[key] || []) {
+        const [name, p] = Object.entries(e)[0];
+        const addr = (p.device_address || "").toUpperCase();
+        const match = hint.test(name.trim()) || addr.startsWith("2C:BE:EE");
+        out.push(`${state.padEnd(9)} ${addr.slice(0, 8)}  ${match ? "NOTHING " : "other   "} ${p.device_minorType || "-"}  "${name}"`);
+      }
+    }
+  }
+  return out.join("\n") || "no Bluetooth devices";
+}'
+
 echo; echo "== App"
 if [ ! -x "$EXE" ]; then echo "not found: $APP"; exit 1; fi
 echo "path: $APP"
