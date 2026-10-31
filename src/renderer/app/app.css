@@ -15,7 +15,8 @@ body {
 .win-ctrls button[data-win='close']:hover { background: var(--red); color: #fff; }
 .mac .win-ctrls { display: none; }
 
-main { flex: 1; overflow-y: auto; container-type: inline-size; scrollbar-width: thin; }
+/* Chromium ignores ::-webkit-scrollbar once scrollbar-width is set, so colour it here too (Linux/Windows show it). */
+main { flex: 1; overflow-y: auto; container-type: inline-size; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
 main::-webkit-scrollbar { width: 8px; }
 main::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
 

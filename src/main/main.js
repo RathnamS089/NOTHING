@@ -43,15 +43,23 @@ let switching = null; // address being switched to
 let demoTimer = null;
 
 // Linux compositors need this for the island's transparent window.
+let relaunching = false;
 if (process.platform === 'linux') {
   app.commandLine.appendSwitch('enable-transparent-visuals');
   // Wayland (default on Ubuntu and Fedora GNOME) won't let apps place their own
   // windows or keep them on top, so the island runs under XWayland instead.
-  // The packaged launcher passes the same flag (build.linux.executableArgs).
-  app.commandLine.appendSwitch('ozone-platform', 'x11');
+  // The backend is picked before this script runs, so a switch set here is too
+  // late: relaunch once with the flag (the packaged launcher already passes it).
+  const onWayland = process.env.XDG_SESSION_TYPE === 'wayland' || !!process.env.WAYLAND_DISPLAY;
+  if (onWayland && process.env.DISPLAY && !app.commandLine.hasSwitch('ozone-platform')) {
+    relaunching = true;
+    app.relaunch({ args: [...process.argv.slice(1), '--ozone-platform=x11'] });
+    app.exit(0);
+  }
 }
 
-if (!app.requestSingleInstanceLock()) app.quit();
+// Don't take the single-instance lock on the way out, or the relaunched copy would quit.
+if (!relaunching && !app.requestSingleInstanceLock()) app.quit();
 app.on('second-instance', () => openApp());
 
 function state() {
