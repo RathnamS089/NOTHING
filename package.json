@@ -1,7 +1,7 @@
 {
   "name": "nothing-island",
   "version": "0.1.0",
-  "description": "Dynamic Island widget + Nothing X-style companion for Nothing and CMF earbuds on macOS and Windows",
+  "description": "Dynamic Island widget + Nothing X-style companion for Nothing and CMF earbuds on macOS, Windows and Linux",
   "main": "src/main/main.js",
   "scripts": {
     "start": "electron .",
@@ -36,6 +36,7 @@
   "build": {
     "appId": "app.nothingisland",
     "productName": "Nothing Island",
+    "artifactName": "Nothing-Island-${version}-${arch}.${ext}",
     "files": [
       "src/**",
       "assets/**",
@@ -99,6 +100,9 @@
       "onlyLoadAppFromAsar": true,
       "loadBrowserProcessSpecificV8Snapshot": false,
       "grantFileProtocolExtraPrivileges": false
+    },
+    "nsis": {
+      "artifactName": "Nothing-Island-Setup-${version}.${ext}"
     }
   },
   "desktopName": "nothing-island.desktop"
