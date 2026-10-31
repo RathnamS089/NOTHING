@@ -226,7 +226,7 @@ function setDemo(on) {
     syncMedia();
     detector.update(null);
     if (bridge.available) bridge.listDevices();
-    else detector.start();
+    detector.start();
   }
   broadcast();
 }
@@ -414,18 +414,16 @@ app.whenReady().then(() => {
   controller.on('log', (m) => process.env.NOTHING_DEBUG && console.log('[control]', m));
 
   bridge.on('devices', (list) => !demo && detector.fromBridgeList(list));
-  bridge.on('exit', ({ code, signal }) => {
-    console.warn(`[bridge] helper exited (${signal || code}); falling back to polling`);
-    if (!demo && !bridge.available) detector.start();
-  });
+  detector.on('blind', () => console.warn('[bridge] helper sees no Bluetooth devices: is Bluetooth permission allowed? Using OS polling only'));
 
   createIsland();
   createTray();
 
   if (process.env.NOTHING_DEMO) {
     island.webContents.once('did-finish-load', () => setTimeout(() => setDemo(true), 800));
-  } else if (!bridge.start()) {
-    detector.start(); // no native helper for this OS/build: poll the OS instead
+  } else {
+    bridge.start(); // instant connect events + earbud controls, when available
+    detector.start(); // always poll the OS too, so detection never depends on the helper
   }
   if (process.env.NOTHING_DEMO) bridge.start();
 });

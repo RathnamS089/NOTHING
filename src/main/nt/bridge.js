@@ -39,6 +39,9 @@ class Bridge extends EventEmitter {
     this.proc = null;
     this.devices = [];
     this.restarts = 0;
+    // Helper errors ("device not connected", ...) are expected and handled per
+    // request; without a standing listener EventEmitter would throw and crash.
+    this.on('error', (e) => process.env.NOTHING_DEBUG && console.warn('[bridge] error:', e?.msg || e));
   }
 
   get available() {

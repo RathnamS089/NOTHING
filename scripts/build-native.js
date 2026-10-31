@@ -31,6 +31,10 @@ try {
   const parts = ARCHS.map(compile);
   execFileSync('lipo', ['-create', ...parts, '-output', bin], { stdio: 'inherit' });
   parts.forEach((p) => fs.rmSync(p));
+  // macOS ties Bluetooth permission to the code-signing identifier. Without
+  // this, each slice keeps its temp name ("nothing-link-arm64") and macOS
+  // treats the helper as a new, unpermitted app. Same id as packaged builds.
+  execFileSync('codesign', ['--force', '--sign', '-', '--identifier', 'app.nothingisland.link', bin], { stdio: 'inherit' });
   console.log(`built native/bin/nothing-link (${ARCHS.join(' + ')})`);
 } catch {
   // In CI a missing helper would ship an app without earbud controls, so fail loudly.

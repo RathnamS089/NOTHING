@@ -129,3 +129,26 @@ test('YouTube tabs carry the video id for the thumbnail', () => {
   const { parseBrowserTab } = require('../src/main/media/nowplaying');
   assert.deepStrictEqual(parseBrowserTab('https://music.youtube.com/watch?v=dQw4w9WgXcQ&list=x', 'Song', 'Safari').art, { kind: 'youtube', id: 'dQw4w9WgXcQ' });
 });
+
+// --- Detection -------------------------------------------------------------
+
+const { Detector } = require('../src/main/detector');
+
+test('a helper that sees no devices does not hide connected buds', () => {
+  const d = new Detector();
+  d.update({ name: 'CMF Buds 2', address: '2C:BE:EE:00:00:02', battery: {}, model: {} });
+  let blind = false;
+  d.on('blind', () => (blind = true));
+  d.fromBridgeList([]);
+  assert.equal(blind, true);
+  assert.equal(d.current?.name, 'CMF Buds 2');
+});
+
+test('the helper list still drives connect and disconnect when it can see', () => {
+  const d = new Detector();
+  d.fromBridgeList([{ name: 'CMF Buds 2', address: '2C:BE:EE:00:00:02', connected: true }, { name: 'Logi M650', address: 'D3:EE:B3:00:00:01', connected: true }]);
+  assert.equal(d.current?.name, 'CMF Buds 2');
+  assert.equal(d.paired.length, 1);
+  d.fromBridgeList([{ name: 'CMF Buds 2', address: '2C:BE:EE:00:00:02', connected: false }, { name: 'Logi M650', address: 'D3:EE:B3:00:00:01', connected: true }]);
+  assert.equal(d.current, null);
+});
