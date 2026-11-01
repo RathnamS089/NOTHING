@@ -101,7 +101,7 @@ class Controller extends EventEmitter {
 
   absorb(frame) {
     for (const [name, f] of Object.entries(FEATURES)) {
-      if (resolve(f.read, this.model) !== frame.command) continue;
+      if (resolve(f.read, this.model) !== frame.command && f.push !== frame.command) continue;
       let value;
       try { value = f.decode(frame.payload, this.model); } catch { value = null; }
       if (value == null) continue;

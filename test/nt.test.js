@@ -64,6 +64,19 @@ test('real CMF Buds 2a in-ear reply (unrelated list) is ignored', () => {
   assert.strictEqual(FEATURES.inEar.decode(Buffer.from('08070009000a000c000e000f0015001600', 'hex')), null);
 });
 
+test('real CMF Buds 2a pinch pushes update ANC in the app', () => {
+  const { EventEmitter } = require('node:events');
+  const { Controller } = require('../src/main/nt/controller');
+  const bridge = new EventEmitter();
+  const c = new Controller(bridge);
+  const seen = [];
+  c.on('live', (l) => seen.push(l.anc));
+  // Pinch to transparency, then back to ANC high: flags 0x0020, command 0x03, kind PUSH.
+  bridge.emit('data', Buffer.from('55200003e003002a0107002230', 'hex'));
+  bridge.emit('data', Buffer.from('55200003e003002b0101002190', 'hex'));
+  assert.deepStrictEqual(seen, [{ anc: 'transparency' }, { anc: 'anc', ancLevel: 'high' }]);
+});
+
 test('ring stop is addressed to the requested bud', () => {
   const { ACTIONS } = require('../src/main/nt/features');
   assert.deepStrictEqual(ACTIONS.ring.encode('left', true), [0x02, 1]);

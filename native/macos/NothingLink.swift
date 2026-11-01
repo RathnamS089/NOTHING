@@ -47,6 +47,7 @@ func bytes(fromHex s: String) -> [UInt8] {
 final class Link: NSObject, IOBluetoothRFCOMMChannelDelegate {
     var device: IOBluetoothDevice?
     var channel: IOBluetoothRFCOMMChannel?
+    var opening: IOBluetoothRFCOMMChannel?
     var pending: [BluetoothRFCOMMChannelID] = []
     var notifications: [IOBluetoothUserNotification] = []
 
@@ -157,11 +158,24 @@ final class Link: NSObject, IOBluetoothRFCOMMChannelDelegate {
         var ch: IOBluetoothRFCOMMChannel?
         let r = d.openRFCOMMChannelAsync(&ch, withChannelID: id, delegate: self)
         emit(["ev": "log", "msg": "open channel \(id) -> \(r)"])
-        if r != kIOReturnSuccess { openNext() }
+        if r != kIOReturnSuccess { return openNext() }
+        // Keep the half-open channel alive: if nothing holds it, it is freed and
+        // the open-complete callback never arrives.
+        opening = ch
+        // A channel the buds ignore never completes either; move on after a while.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
+            guard let self, let ch, self.opening === ch else { return }
+            emit(["ev": "log", "msg": "open channel \(id) timed out"])
+            self.opening = nil
+            ch.close()
+            self.openNext()
+        }
     }
 
     func rfcommChannelOpenComplete(_ ch: IOBluetoothRFCOMMChannel!, status error: IOReturn) {
         emit(["ev": "log", "msg": "open complete \(error)"])
+        guard ch === opening else { return }
+        opening = nil
         if error == kIOReturnSuccess {
             channel = ch
             emit(["ev": "open", "channel": Int(ch.getID())])
@@ -189,6 +203,11 @@ final class Link: NSObject, IOBluetoothRFCOMMChannelDelegate {
     }
 
     func closeChannel() {
+        pending = []
+        if let ch = opening {
+            opening = nil
+            ch.close()
+        }
         if let ch = channel {
             channel = nil
             ch.close()

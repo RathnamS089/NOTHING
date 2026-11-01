@@ -60,6 +60,7 @@ const FEATURES = {
   anc: {
     read: 0x1e,
     write: 0x0f,
+    push: 0x03, // sent by the buds when ANC changes on them (pinch)
     decode(p) {
       // Replies list [0x01, mode, ...] records; take the first noise-control record.
       for (let i = 0; i + 1 < p.length; i += 3) if (p[i] === 0x01) return split(ANC_FROM_WIRE[p[i + 1]]);

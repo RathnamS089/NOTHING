@@ -65,8 +65,9 @@ class Decoder {
       const hasCrc = (this.buf[1] & 0x20) !== 0;
       const len = this.buf.readUInt16LE(5);
       const total = HEADER + len + (hasCrc ? 2 : 0);
-      // A real header has flags byte 2 == 0x01; anything else is a stray 0x55 inside data.
-      if (this.buf[2] !== 0x01 || len > 1024) { this.buf = this.buf.subarray(1); continue; }
+      // A real header has flags byte 2 == 0x01 (replies) or 0x00 (pushes such as
+      // a pinch changing ANC); anything else is a stray 0x55 inside data.
+      if (this.buf[2] > 0x01 || len > 1024) { this.buf = this.buf.subarray(1); continue; }
       if (this.buf.length < total) break;
 
       const raw = this.buf.subarray(0, total);
