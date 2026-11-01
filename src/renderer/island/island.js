@@ -7,13 +7,38 @@ let state = null;
 let collapseTimer = null;
 let hideTimer = null;
 let hovering = false;
+let trackTimer = null;
+
+// Three renderings of the same song glyph, at different sizes.
+const accent = () => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#d71921';
+const glyphs = {
+  mini: new NXGlyph.Glyph($('cMedia'), { cols: 9, rows: 3 }),
+  strip: new NXGlyph.Glyph($('eGlyph'), { cols: 11, rows: 6 }),
+  big: new NXGlyph.Glyph($('tGlyph'), { cols: 16, rows: 6 }),
+};
 
 const ANC_ORDER = ['anc', 'transparency', 'off'];
+// Device names come from Bluetooth and can contain anything; never inject them raw.
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 // 3x3 dot glyphs per noise mode
 const GLYPH = { anc: '111101111', transparency: '010111010', off: '000010000' };
 
 function setMode(mode) {
-  pill.className = mode;
+  pill.className = mode + (state?.track ? ' has-media' : '');
+}
+
+function renderTrack() {
+  const t = state?.track;
+  pill.classList.toggle('has-media', !!t);
+  for (const g of Object.values(glyphs)) g.set(t, accent());
+  if (!t) return;
+  const src = `${t.source}${t.status === 'paused' ? ' · paused' : ''}`;
+  $('eSrc').textContent = src;
+  $('tSrc').textContent = src;
+  $('eTitle').textContent = t.title;
+  $('tTitle').textContent = t.title;
+  $('eArtist').textContent = t.artist;
+  $('tArtist').textContent = t.artist;
 }
 
 function glyph(mode) {
@@ -52,7 +77,11 @@ function render() {
       <div class="top"><span class="label">${k}</span><b class="dot-type">${NX.fmt(v)}${v != null ? '<small>%</small>' : ''}</b></div>
       ${NX.dots(v)}
     </div>`).join('');
-  $('eHint').textContent = b.left == null && b.right == null && b.main == null ? 'Battery not reported by OS' : '';
+  // Quick switch: other paired Nothing devices, one tap to move the audio over.
+  const others = (state.paired || []).filter((p) => !p.connected).slice(0, 2);
+  $('eHint').innerHTML = others.length
+    ? others.map((p) => `<button class="swap" data-addr="${esc(p.address)}"${state.switching ? ' disabled' : ''}>${state.switching === p.address ? 'Switching…' : '⇄ ' + esc(p.name.replace(/^(nothing|cmf)\s+/i, ''))}</button>`).join('')
+    : b.left == null && b.right == null && b.main == null ? 'Battery not reported yet' : '';
   $('gName').textContent = d.model?.name || d.name;
 }
 
@@ -68,7 +97,7 @@ function expand(autoCollapse = true) {
 pill.addEventListener('mouseenter', () => {
   hovering = true;
   nx.islandInteractive(true);
-  if (pill.classList.contains('compact')) expand(false);
+  if (pill.classList.contains('compact') || pill.classList.contains('track')) expand(false);
 });
 
 pill.addEventListener('mouseleave', () => {
@@ -84,6 +113,13 @@ $('eAnc').addEventListener('click', (e) => {
   nx.setDevice({ anc: ANC_ORDER[(ANC_ORDER.indexOf(cur) + 1) % ANC_ORDER.length] });
 });
 
+$('eHint').addEventListener('click', (e) => {
+  const t = e.target.closest('.swap');
+  if (!t) return;
+  e.stopPropagation();
+  nx.switchTo(t.dataset.addr);
+});
+
 $('eOpen').addEventListener('click', (e) => {
   e.stopPropagation();
   nx.openApp();
@@ -94,11 +130,22 @@ nx.onState((s) => {
   state = s;
   NX.applyTheme(s.prefs);
   render();
+  renderTrack();
+  // Track ended while showing it: fall back to the compact pill.
+  if (!s.track && pill.classList.contains('track')) setMode('compact');
 });
 
 nx.onIsland(async (ev) => {
   state = await nx.getState();
-  if (ev.type === 'connected') {
+  if (ev.type === 'track') {
+    // Show the new song's glyph for a moment, unless the user is mid-interaction.
+    if (hovering || pill.classList.contains('hidden') || pill.classList.contains('goodbye')) return;
+    renderTrack();
+    clearTimeout(collapseTimer);
+    clearTimeout(trackTimer);
+    setMode('track');
+    trackTimer = setTimeout(() => pill.classList.contains('track') && setMode('compact'), 4500);
+  } else if (ev.type === 'connected') {
     render();
     // Start from a notch-sized sliver, then bloom open.
     setMode('hidden');
@@ -114,4 +161,4 @@ nx.onIsland(async (ev) => {
   }
 });
 
-nx.getState().then((s) => { state = s; NX.applyTheme(s.prefs); render(); });
+nx.getState().then((s) => { state = s; NX.applyTheme(s.prefs); render(); renderTrack(); });

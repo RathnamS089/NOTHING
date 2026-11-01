@@ -8,7 +8,7 @@ const DEFAULT_DEVICE = {
   anc: 'anc', // 'anc' | 'transparency' | 'off'
   ancLevel: 'high',
   eqPreset: 'balanced',
-  eqCustom: [0, 0, 0, 0, 0, 0, 0, 0],
+  eqCustom: [0, 0, 0], // bass, mid, treble (dB)
   bass: { on: false, level: 2 },
   lowLag: false,
   inEar: true,
@@ -22,6 +22,8 @@ const DEFAULT_DEVICE = {
 const DEFAULT_PREFS = {
   island: { enabled: true, autoCollapseMs: 5000 },
   theme: 'system', // 'system' | 'dark' | 'light'
+  // Song glyphs read the current track title locally; never stored or sent anywhere.
+  media: { enabled: true },
 };
 
 class Store {

@@ -7,12 +7,19 @@
     "start": "electron .",
     "demo": "NOTHING_DEMO=1 electron .",
     "demo:win": "set NOTHING_DEMO=1&& electron .",
-    "icon": "node scripts/make-icon.js"
+    "test": "node --test test/",
+    "icon": "node scripts/make-icon.js",
+    "build:native": "node scripts/build-native.js",
+    "postinstall": "node scripts/build-native.js",
+    "dist:mac": "npm run build:native && electron-builder --mac",
+    "dist:linux": "electron-builder --linux",
+    "dist:win": "electron-builder --win"
   },
   "license": "MIT",
   "type": "commonjs",
   "devDependencies": {
-    "electron": "^45.1.0"
+    "electron": "^45.1.0",
+    "electron-builder": "^26.18.0"
   },
   "dependencies": {
     "@fontsource/doto": "^5.3.0",
@@ -20,5 +27,79 @@
     "@fontsource/space-mono": "^5.3.0"
   },
   "productName": "Nothing Island",
-  "private": true
+  "private": true,
+  "author": {
+    "name": "Rathnam S",
+    "email": "RathnamS089@users.noreply.github.com"
+  },
+  "homepage": "https://github.com/RathnamS089/NOTHING",
+  "build": {
+    "appId": "app.nothingisland",
+    "productName": "Nothing Island",
+    "files": [
+      "src/**",
+      "assets/**",
+      "package.json",
+      "node_modules/@fontsource/doto/files/doto-latin-{700,900}-normal.woff2",
+      "node_modules/@fontsource/space-grotesk/files/space-grotesk-latin-{400,500}-normal.woff2",
+      "node_modules/@fontsource/space-mono/files/space-mono-latin-400-normal.woff2"
+    ],
+    "mac": {
+      "category": "public.app-category.utilities",
+      "target": [
+        "dmg"
+      ],
+      "extendInfo": {
+        "LSUIElement": true,
+        "NSBluetoothAlwaysUsageDescription": "Nothing Island talks to your Nothing and CMF earbuds over Bluetooth."
+      },
+      "extraResources": [
+        {
+          "from": "native/bin",
+          "to": "native/bin"
+        }
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Audio",
+      "icon": "assets/tray-win.png",
+      "extraResources": [
+        {
+          "from": "native/linux",
+          "to": "native/linux"
+        }
+      ],
+      "syncDesktopName": true,
+      "maintainer": "Rathnam S <RathnamS089@users.noreply.github.com>"
+    },
+    "deb": {
+      "depends": [
+        "bluez",
+        "python3",
+        "libnotify4",
+        "libxtst6",
+        "libnss3"
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "electronFuses": {
+      "runAsNode": false,
+      "enableCookieEncryption": true,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true,
+      "loadBrowserProcessSpecificV8Snapshot": false,
+      "grantFileProtocolExtraPrivileges": false
+    }
+  },
+  "desktopName": "nothing-island.desktop"
 }
