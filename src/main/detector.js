@@ -86,26 +86,64 @@ class Detector extends EventEmitter {
     this.current = null;
     this.timer = null;
     this.busy = false;
+    this.paired = [];
+    this.bridgeBlind = false;
   }
 
   start() {
+    this.stop();
     this.tick();
     this.timer = setInterval(() => this.tick(), POLL_MS);
   }
 
   stop() {
     clearInterval(this.timer);
+    this.timer = null;
+  }
+
+  // Event-driven mode: the native bridge pushes the paired-device list on every
+  // connect/disconnect, so the island reacts instantly instead of on the next poll.
+  // Polling keeps running alongside it: a helper without Bluetooth permission
+  // sees no devices at all, and must not hide buds the OS reports as connected.
+  fromBridgeList(list) {
+    this.paired = list.filter((d) => isNothingDevice(d.name, d.address)).map((d) => ({ ...d, model: identify(d.name) }));
+    this.bridgeBlind = list.length === 0;
+    if (this.bridgeBlind) {
+      this.emit('paired', this.paired);
+      return this.emit('blind');
+    }
+    const found = this.paired.find((d) => d.connected);
+    const keep = found && this.current?.address === found.address ? this.current : null;
+    this.update(found ? {
+      name: found.name,
+      address: found.address,
+      battery: keep?.battery || { left: null, right: null, case: null, main: null },
+      firmware: keep?.firmware || null,
+      model: found.model,
+    } : null);
+    this.emit('paired', this.paired);
+  }
+
+  patch(fields) {
+    if (this.current) this.update({ ...this.current, ...fields });
   }
 
   async tick() {
-    if (this.busy) return;
+    // Linux has no OS scanner here; there the bridge's device list is the source.
+    if (this.busy || !['darwin', 'win32'].includes(process.platform)) return;
     this.busy = true;
     try {
-      const all = process.platform === 'darwin' ? await scanMac()
-        : process.platform === 'win32' ? await scanWindows()
-        : [];
+      const all = process.platform === 'darwin' ? await scanMac() : await scanWindows();
       const found = all.find((d) => isNothingDevice(d.name, d.address));
-      const next = found ? { ...found, model: identify(found.name) } : null;
+      let next = found ? { ...found, model: identify(found.name) } : null;
+      // The OS often has no per-bud battery or firmware for these buds; keep
+      // what the control link already read instead of blanking it every poll.
+      const cur = this.current;
+      if (next && cur?.address === next.address) {
+        const battery = { ...next.battery };
+        for (const k of Object.keys(battery)) battery[k] ??= cur.battery?.[k] ?? null;
+        next = { ...next, battery, firmware: next.firmware || cur.firmware || null };
+      }
       this.update(next);
     } finally {
       this.busy = false;

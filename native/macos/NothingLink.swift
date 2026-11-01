@@ -7,6 +7,8 @@
 //        {"op":"connect","address":"AA:BB:.."}   -> SDP lookup + open RFCOMM
 //        {"op":"write","hex":"5560..."}           -> write bytes to open channel
 //        {"op":"close"}                           -> close channel
+//        {"op":"connectDevice","address":".."}    -> bring up the audio link
+//        {"op":"disconnectDevice","address":".."} -> drop it
 // stdout {"ev":"devices","list":[...]}  {"ev":"open","channel":15}
 //        {"ev":"data","hex":"..."}       {"ev":"closed"}  {"ev":"error","msg":"..."}
 
@@ -45,6 +47,7 @@ func bytes(fromHex s: String) -> [UInt8] {
 final class Link: NSObject, IOBluetoothRFCOMMChannelDelegate {
     var device: IOBluetoothDevice?
     var channel: IOBluetoothRFCOMMChannel?
+    var opening: IOBluetoothRFCOMMChannel?
     var pending: [BluetoothRFCOMMChannelID] = []
     var notifications: [IOBluetoothUserNotification] = []
 
@@ -78,6 +81,28 @@ final class Link: NSObject, IOBluetoothRFCOMMChannelDelegate {
         emit(["ev": "devices", "list": list])
     }
 
+    // MARK: audio link (device switching)
+
+    func connectDevice(_ address: String) {
+        guard let d = IOBluetoothDevice(addressString: address) else {
+            return emit(["ev": "device", "address": address, "ok": false])
+        }
+        if d.isConnected() { return emit(["ev": "device", "address": address, "ok": true]) }
+        let r = d.openConnection(self)
+        if r != kIOReturnSuccess { emit(["ev": "device", "address": address, "ok": false]) }
+    }
+
+    @objc func connectionComplete(_ d: IOBluetoothDevice!, status: IOReturn) {
+        emit(["ev": "device", "address": (d.addressString ?? "").uppercased().replacingOccurrences(of: "-", with: ":"), "ok": status == kIOReturnSuccess])
+    }
+
+    func disconnectDevice(_ address: String) {
+        guard let d = IOBluetoothDevice(addressString: address) else { return }
+        if d.addressString == device?.addressString { closeChannel() }
+        if d.isConnected() { d.closeConnection() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { self.emitDevices() }
+    }
+
     // MARK: RFCOMM
 
     func connect(_ address: String) {
@@ -89,17 +114,39 @@ final class Link: NSObject, IOBluetoothRFCOMMChannelDelegate {
         if !d.isConnected() {
             return emit(["ev": "error", "msg": "device not connected"])
         }
+        // macOS caches SDP records for paired devices; use them when present.
+        if cachedChannel(d) != nil { return sdpQueryComplete(d, status: kIOReturnSuccess) }
+        sdpDone = false
         let r = d.performSDPQuery(self, uuids: [serviceUUID])
-        if r != kIOReturnSuccess { sdpQueryComplete(d, status: r) }
+        emit(["ev": "log", "msg": "sdp query started \(r)"])
+        if r != kIOReturnSuccess { return sdpQueryComplete(d, status: r) }
+        // Some buds never answer SDP while streaming audio; don't wait forever.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+            if !self.sdpDone && self.device == d { self.sdpQueryComplete(d, status: kIOReturnTimeout) }
+        }
+    }
+
+    var sdpDone = true
+
+    func cachedChannel(_ d: IOBluetoothDevice) -> BluetoothRFCOMMChannelID? {
+        var id: BluetoothRFCOMMChannelID = 0
+        if let rec = d.getServiceRecord(for: serviceUUID), rec.getRFCOMMChannelID(&id) == kIOReturnSuccess { return id }
+        // Fall back to scanning every cached record for the vendor UUID.
+        for rec in (d.services as? [IOBluetoothSDPServiceRecord]) ?? [] where rec.hasService(from: [serviceUUID]) {
+            if rec.getRFCOMMChannelID(&id) == kIOReturnSuccess { return id }
+        }
+        return nil
     }
 
     @objc func sdpQueryComplete(_ d: IOBluetoothDevice!, status: IOReturn) {
-        var id: BluetoothRFCOMMChannelID = 0
-        if let rec = d.getServiceRecord(for: serviceUUID), rec.getRFCOMMChannelID(&id) == kIOReturnSuccess {
+        if sdpDone && status == kIOReturnTimeout { return }
+        sdpDone = true
+        if let id = cachedChannel(d) {
             pending = [id] + fallbackChannels.filter { $0 != id }
         } else {
             pending = fallbackChannels
         }
+        emit(["ev": "log", "msg": "sdp complete \(status), channels \(pending)"])
         openNext()
     }
 
@@ -110,10 +157,25 @@ final class Link: NSObject, IOBluetoothRFCOMMChannelDelegate {
         let id = pending.removeFirst()
         var ch: IOBluetoothRFCOMMChannel?
         let r = d.openRFCOMMChannelAsync(&ch, withChannelID: id, delegate: self)
-        if r != kIOReturnSuccess { openNext() }
+        emit(["ev": "log", "msg": "open channel \(id) -> \(r)"])
+        if r != kIOReturnSuccess { return openNext() }
+        // Keep the half-open channel alive: if nothing holds it, it is freed and
+        // the open-complete callback never arrives.
+        opening = ch
+        // A channel the buds ignore never completes either; move on after a while.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
+            guard let self, let ch, self.opening === ch else { return }
+            emit(["ev": "log", "msg": "open channel \(id) timed out"])
+            self.opening = nil
+            ch.close()
+            self.openNext()
+        }
     }
 
     func rfcommChannelOpenComplete(_ ch: IOBluetoothRFCOMMChannel!, status error: IOReturn) {
+        emit(["ev": "log", "msg": "open complete \(error)"])
+        guard ch === opening else { return }
+        opening = nil
         if error == kIOReturnSuccess {
             channel = ch
             emit(["ev": "open", "channel": Int(ch.getID())])
@@ -141,6 +203,11 @@ final class Link: NSObject, IOBluetoothRFCOMMChannelDelegate {
     }
 
     func closeChannel() {
+        pending = []
+        if let ch = opening {
+            opening = nil
+            ch.close()
+        }
         if let ch = channel {
             channel = nil
             ch.close()
@@ -185,6 +252,8 @@ func handle(_ line: String) {
     case "connect": link.connect(msg["address"] as? String ?? "")
     case "write": link.write(msg["hex"] as? String ?? "")
     case "close": link.closeChannel()
+    case "connectDevice": link.connectDevice(msg["address"] as? String ?? "")
+    case "disconnectDevice": link.disconnectDevice(msg["address"] as? String ?? "")
     default: emit(["ev": "error", "msg": "unknown op \(op)"])
     }
 }
