@@ -27,6 +27,23 @@ The app lives in the menu bar (macOS) or system tray (Windows/Linux).
 
 Controls are sent to the buds over Nothing's RFCOMM channel through a small native helper: Swift/IOBluetooth on macOS, Python/BlueZ on Linux. They're tested on a CMF Buds 2a. Windows has no helper yet, so it only detects the buds and shows the island.
 
+## Compatibility
+
+Which buds have been tried on which system. Have a pair that's untested here? A [compatibility report](https://github.com/RathnamS089/NOTHING/issues/new?template=compatibility.yml) fills in a gap, even when it says "doesn't work".
+
+| Model | macOS | Linux | Windows |
+|---|---|---|---|
+| CMF Buds 2a | ✅ | ❔ | ❔ |
+| CMF Buds 2 | 🟡 detected, controls unconfirmed | ❔ | ❔ |
+| CMF Buds 2 Plus | ❔ | ❔ | ❔ |
+| CMF Buds Pro 2 | ❔ | ❔ | ❔ |
+| CMF Buds Pro, CMF Buds, CMF Neckband Pro | ❔ | ❔ | ❔ |
+| Ear (1), Ear (2), Ear (3) | ❔ | ❔ | ❔ |
+| Ear, Ear (a), Ear (open), Ear (stick) | ❔ | ❔ | ❔ |
+| Headphone (1) | ❔ | ❔ | ❔ |
+
+✅ works (island, battery, ANC and EQ) · 🟡 partly works · ❌ doesn't work · ❔ not tested yet. On Windows only the island and battery are expected for now.
+
 ## Current limits
 
 - Only CMF Buds 2a has been tested with real hardware. Other models may show wrong or missing settings.
