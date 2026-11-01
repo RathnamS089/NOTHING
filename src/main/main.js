@@ -91,9 +91,12 @@ function broadcast() {
 }
 
 function placeIsland() {
-  const { bounds } = screen.getPrimaryDisplay();
-  // Sit flush with the top edge so the pill grows out of the notch / menu bar.
-  island.setBounds({ x: Math.round(bounds.x + (bounds.width - ISLAND_W) / 2), y: bounds.y, width: ISLAND_W, height: ISLAND_H });
+  const { bounds, workArea } = screen.getPrimaryDisplay();
+  // macOS: sit flush with the top edge so the pill grows out of the notch / menu bar.
+  // Elsewhere: start below any top panel (GNOME's top bar, a top taskbar) so the
+  // pill doesn't cover its clock.
+  const top = process.platform === 'darwin' ? bounds.y : workArea.y;
+  island.setBounds({ x: Math.round(bounds.x + (bounds.width - ISLAND_W) / 2), y: top, width: ISLAND_W, height: ISLAND_H });
 }
 
 function createIsland() {
