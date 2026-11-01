@@ -25,6 +25,8 @@ const DEFAULT_PREFS = {
   // Song glyphs read the current track title locally; never stored or sent anywhere.
   // covers: fetch the album cover from the service already playing the song.
   media: { enabled: true, covers: true },
+  // Release builds check GitHub Releases and install updates (see updater.js).
+  updates: { auto: true },
 };
 
 class Store {

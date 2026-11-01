@@ -165,3 +165,40 @@ test('the helper list still drives connect and disconnect when it can see', () =
   d.fromBridgeList([{ name: 'CMF Buds 2', address: '2C:BE:EE:00:00:02', connected: false }, { name: 'Logi M650', address: 'D3:EE:B3:00:00:01', connected: true }]);
   assert.equal(d.current, null);
 });
+
+test('update versions compare in semver order, pre-releases included', () => {
+  const Module = require('node:module');
+  const load = Module._load;
+  Module._load = (req, ...rest) => (req === 'electron' ? {} : load(req, ...rest));
+  const { compareVersions: cmp } = require('../src/main/updater');
+  Module._load = load;
+  assert.ok(cmp('v0.1.0-alpha.6', '0.1.0-alpha.5') > 0);
+  assert.ok(cmp('0.1.0-alpha.10', '0.1.0-alpha.9') > 0);
+  assert.ok(cmp('0.1.0', '0.1.0-alpha.9') > 0);
+  assert.ok(cmp('0.1.0-beta.1', '0.1.0-alpha.9') > 0);
+  assert.ok(cmp('0.2.0-alpha.1', '0.1.9') > 0);
+  assert.strictEqual(cmp('v0.1.0-alpha.5', '0.1.0-alpha.5'), 0);
+});
+
+test('mac update check offers the newest published release, ignoring drafts', async () => {
+  const Module = require('node:module');
+  const load = Module._load;
+  const releases = [
+    { tag_name: 'v0.1.0-alpha.7', draft: true, html_url: 'https://github.com/RathnamS089/NOTHING/releases/tag/v0.1.0-alpha.7' },
+    { tag_name: 'v0.1.0-alpha.6', draft: false, html_url: 'https://github.com/RathnamS089/NOTHING/releases/tag/v0.1.0-alpha.6' },
+    { tag_name: 'v0.1.0-alpha.5', draft: false, html_url: 'https://github.com/RathnamS089/NOTHING/releases/tag/v0.1.0-alpha.5' },
+  ];
+  const electron = { app: { isPackaged: true, getVersion: () => '0.1.0-alpha.5' }, net: { fetch: async () => ({ ok: true, json: async () => releases }) } };
+  Module._load = (req, ...rest) => (req === 'electron' ? electron : load(req, ...rest));
+  delete require.cache[require.resolve('../src/main/updater')];
+  const { Updater } = require('../src/main/updater');
+  Module._load = load;
+  const u = new Updater();
+  u.state.manual = true;
+  await u.check();
+  assert.strictEqual(u.state.status, 'available');
+  assert.strictEqual(u.state.version, '0.1.0-alpha.6');
+  electron.app.getVersion = () => '0.1.0-alpha.6';
+  await u.check();
+  assert.strictEqual(u.state.status, 'none');
+});

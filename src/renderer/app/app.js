@@ -1,3 +1,21 @@
+// Release builds only: auto-update switch plus what the updater is doing.
+function updatesRows(u, prefs) {
+  if (!u) return '';
+  const what = u.manual
+    ? 'Checks GitHub for new releases and tells you when one is out.'
+    : 'Downloads new releases from GitHub and installs them when you quit.';
+  const status = {
+    checking: '<span class="label">Checking…</span>',
+    downloading: `<span class="label">Downloading ${esc(u.version)}…</span>`,
+    ready: `<button class="btn" data-update="install">Restart to update</button>`,
+    available: `<button class="btn" data-update="open">Download ${esc(u.version)}</button>`,
+    none: '<span class="label">Up to date</span>',
+    error: '<button class="btn" data-update="check">Retry</button>',
+  }[u.status] || '<button class="btn" data-update="check">Check now</button>';
+  return `<div class="row"><div class="txt">${u.manual ? 'Check for updates automatically' : 'Install updates automatically'}<small>${what}</small></div>${sw('updates', prefs.updates?.auto !== false)}</div>
+      <div class="row"><div class="txt">Version<small class="mono">${esc(u.current)}</small></div>${status}</div>`;
+}
+
 const root = document.getElementById('root');
 document.body.classList.add({ darwin: 'mac', win32: 'win', linux: 'linux' }[nx.platform] || 'linux');
 // Frameless on Windows/Linux: double-clicking the bar maximises, as native title bars do.
@@ -180,6 +198,7 @@ function deviceView() {
       <div class="row"><div class="txt">Dynamic island<small>Show the island when buds connect</small></div>${sw('island', prefs.island.enabled)}</div>
       <div class="row"><div class="txt">Song glyphs<small>Reads the playing track's title on this computer to draw its glyph. Never saved or sent anywhere.</small></div>${sw('media', prefs.media?.enabled !== false)}</div>
       ${prefs.media?.enabled !== false ? `<div class="row"><div class="txt">Album covers<small>Draws the cover in dots. Asked only from the service already playing the song (Apple Music, Spotify, YouTube); kept in memory only.</small></div>${sw('covers', prefs.media?.covers !== false)}</div>` : ''}
+      ${updatesRows(state.update, prefs)}
       <div class="row"><div class="txt">Appearance</div>
         <select data-theme-select>${['system', 'dark', 'light'].map((t) => `<option value="${t}"${prefs.theme === t ? ' selected' : ''}>${t[0].toUpperCase() + t.slice(1)}</option>`).join('')}</select>
       </div>
@@ -263,6 +282,7 @@ root.addEventListener('click', (e) => {
   else if (t.dataset.eq) set({ eqPreset: t.dataset.eq });
   else if (t.dataset.bass) set({ bass: { ...s.bass, level: +t.dataset.bass } });
   else if (t.dataset.side) { gestureSide = t.dataset.side; render(); }
+  else if (t.dataset.update) nx.update(t.dataset.update).then(update);
   else if (t.dataset.switch) nx.switchTo(t.dataset.switch).then(() => nx.getState().then(update));
   else if (t.dataset.ring) {
     const side = t.dataset.ring;
@@ -275,6 +295,7 @@ root.addEventListener('click', (e) => {
     const k = t.dataset.toggle;
     if (k === 'covers') nx.setPrefs({ media: { covers: !(state.prefs.media?.covers !== false) } }).then(update);
     else if (k === 'media') nx.setPrefs({ media: { enabled: !(state.prefs.media?.enabled !== false) } }).then(update);
+    else if (k === 'updates') nx.setPrefs({ updates: { auto: !(state.prefs.updates?.auto !== false) } }).then(update);
     else if (k === 'island') nx.setPrefs({ island: { ...state.prefs.island, enabled: !state.prefs.island.enabled } }).then(update);
     else if (k === 'bass') set({ bass: { ...s.bass, on: !s.bass.on } });
     else set({ [k]: !s[k] });

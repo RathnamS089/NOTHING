@@ -1,10 +1,11 @@
 const path = require('path');
-const { app, BrowserWindow, Tray, Menu, ipcMain, screen, nativeImage, session } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, screen, nativeImage, session, shell } = require('electron');
 const { Detector } = require('./detector');
 const { Store } = require('./store');
 const { Bridge } = require('./nt/bridge');
 const { Controller } = require('./nt/controller');
 const { NowPlaying } = require('./media/nowplaying');
+const { Updater } = require('./updater');
 
 const isMac = process.platform === 'darwin';
 const RENDERER = path.join(__dirname, '..', 'renderer');
@@ -32,6 +33,7 @@ const DEMO_DEVICE = {
 let island, appWin, tray, store, detector;
 let bridge, controller;
 const nowPlaying = new NowPlaying();
+const updater = new Updater();
 let demoTrackTimer = null;
 const DEMO_TRACKS = [
   { title: 'Glass Animals Interlude', artist: 'Demo Artist', source: 'Spotify', status: 'playing' },
@@ -74,6 +76,7 @@ function state() {
     paired: demo ? [{ ...DEMO_DEVICE, connected: true }] : detector?.paired || [],
     track: store.prefs().media?.enabled ? publicTrack(nowPlaying.track) : null,
     switching,
+    update: updater.supported ? { ...updater.state, current: app.getVersion() } : null,
   };
 }
 
@@ -204,11 +207,26 @@ function updateTray() {
       label: 'Island enabled', type: 'checkbox', checked: prefs.island.enabled,
       click: (i) => { store.setPrefs({ island: { ...prefs.island, enabled: i.checked } }); if (!i.checked) island.hide(); broadcast(); },
     },
+    ...updateMenu(),
     { type: 'separator' },
     { label: 'Simulate CMF Buds 2a', type: 'checkbox', checked: demo, click: (i) => setDemo(i.checked) },
     { type: 'separator' },
     { label: 'Quit', role: 'quit' },
   ]));
+}
+
+function updateMenu() {
+  if (!updater.supported) return [];
+  const u = updater.state;
+  if (u.status === 'available') return [{ label: `Download Nothing Island ${u.version}…`, click: () => openUpdatePage() }];
+  if (u.status === 'ready') return [{ label: `Restart to update to ${u.version}`, click: () => updater.install() }];
+  if (u.status === 'downloading') return [{ label: `Downloading ${u.version}…`, enabled: false }];
+  return [{ label: u.status === 'checking' ? 'Checking for updates…' : 'Check for updates', enabled: u.status !== 'checking', click: () => updater.check() }];
+}
+
+// Only ever the release page updater.js validated, never a URL from a renderer.
+function openUpdatePage() {
+  if (updater.state.url) shell.openExternal(updater.state.url);
 }
 
 function setDemo(on) {
@@ -298,6 +316,7 @@ function cleanPrefsPatch(p) {
     if (bool(p.media.covers) !== undefined) media.covers = p.media.covers;
     out.media = media;
   }
+  if (p.updates && bool(p.updates.auto) !== undefined) out.updates = { auto: p.updates.auto };
   return out;
 }
 
@@ -316,10 +335,19 @@ ipcMain.handle('device:set', async (_e, rawPatch) => {
 });
 
 ipcMain.handle('prefs:set', (_e, rawPatch) => {
-  store.setPrefs(cleanPrefsPatch(rawPatch));
+  const patch = cleanPrefsPatch(rawPatch);
+  store.setPrefs(patch);
+  if (patch.updates) updater.setEnabled(patch.updates.auto);
   syncMedia();
   if (!store.prefs().island.enabled) island.hide();
   broadcast();
+  return state();
+});
+
+ipcMain.handle('update:action', (_e, action) => {
+  if (action === 'check') updater.check();
+  else if (action === 'open') openUpdatePage();
+  else if (action === 'install') updater.install();
   return state();
 });
 
@@ -386,6 +414,8 @@ app.whenReady().then(() => {
   session.defaultSession.setPermissionCheckHandler(() => false);
   if (isMac) app.dock.hide();
   store = new Store();
+  updater.on('state', broadcast);
+  updater.setEnabled(store.prefs().updates?.auto !== false);
   detector = new Detector();
   bridge = new Bridge();
   controller = new Controller(bridge);

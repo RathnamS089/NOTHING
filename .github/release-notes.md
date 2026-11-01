@@ -49,3 +49,7 @@
 ## Privacy
 
 Nothing Island has no accounts, analytics or telemetry. It only goes online to fetch album art from the service already playing the song (Spotify's or YouTube's image servers), and covers are never saved to disk.
+
+## Updates
+
+From this version on, the app checks GitHub for new releases (switch it off in Settings → Island & app). Windows and Linux install updates themselves when you quit; on Mac you get a **Download** link to the new .dmg.

@@ -44,6 +44,15 @@ Which buds have been tried on which system. Have a pair that's untested here? A 
 
 ✅ works (island, battery, ANC and EQ) · 🟡 partly works · ❌ doesn't work · ❔ not tested yet. On Windows only the island and battery are expected for now.
 
+## Updates
+
+Installed builds check this repo's GitHub Releases a few seconds after launch and every 6 hours. You can switch this off in **Settings → Island & app**.
+
+- **Windows, Linux (.deb, .rpm, AppImage):** the new version downloads in the background and installs when you quit, or right away with **Restart to update**. On .deb and .rpm, Linux asks for your password to install it.
+- **macOS:** shows **Download** with a link to the new release. macOS only lets an app replace itself when it's signed with an Apple Developer ID, so you install the new .dmg yourself for now.
+
+The only requests go to github.com; nothing about you, your buds or what's playing is sent. Running from source (`npm start`) never updates itself: use `git pull`.
+
 ## Current limits
 
 - Only CMF Buds 2a has been tested with real hardware. Other models may show wrong or missing settings.

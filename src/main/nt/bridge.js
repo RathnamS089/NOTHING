@@ -64,6 +64,9 @@ class Bridge extends EventEmitter {
         if (line) this.onLine(line);
       }
     });
+    // Writing to a helper that just died raises EPIPE on stdin; the 'exit'
+    // handler below deals with the restart, so don't let it crash the app.
+    proc.stdin.on('error', (e) => process.env.NOTHING_DEBUG && console.warn('[bridge] stdin:', e.message));
     proc.stderr.on('data', (d) => process.env.NOTHING_DEBUG && process.stderr.write(`[bridge] ${d}`));
     proc.on('exit', (code, signal) => {
       if (this.proc !== proc) return;
@@ -94,7 +97,7 @@ class Bridge extends EventEmitter {
   }
 
   send(op, extra = {}) {
-    if (!this.proc) return false;
+    if (!this.proc?.stdin.writable) return false;
     this.proc.stdin.write(JSON.stringify({ op, ...extra }) + '\n');
     return true;
   }

@@ -60,3 +60,9 @@ Ad-hoc apps still aren't trusted by Gatekeeper: testers use **Privacy & Security
 ## Windows signing (later)
 
 A code-signing certificate (or Azure Trusted Signing), added as `WIN_CSC_LINK` / `WIN_CSC_KEY_PASSWORD`. Until then, SmartScreen shows a warning.
+
+## Updates reach users only when the release is published
+
+Each tag build uploads `latest.yml` (Windows), `latest-linux.yml` (Linux) and the `.blockmap` files next to the installers. Installed apps read those from the **newest published release**, so a draft does nothing until you click **Publish release**. Keep every release marked as pre-release while the app is in alpha: the updater accepts pre-releases.
+
+Don't delete or rename those `.yml` files on a release, or Windows and Linux installs stop updating. macOS checks the GitHub releases list instead and links to the new release page.

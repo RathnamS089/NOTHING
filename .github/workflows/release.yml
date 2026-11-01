@@ -116,6 +116,8 @@ jobs:
             dist/*.dmg
             dist/*.exe
             dist/*.AppImage
+            dist/latest*.yml
+            dist/*.blockmap
             dist/*.deb
             dist/*.rpm
 
