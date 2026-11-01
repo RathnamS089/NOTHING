@@ -2,7 +2,8 @@ const path = require('path');
 const { app, BrowserWindow, Tray, Menu, ipcMain, screen, nativeImage } = require('electron');
 const { Detector } = require('./detector');
 const { Store } = require('./store');
-const { Protocol } = require('./protocol');
+const { Bridge } = require('./nt/bridge');
+const { Controller } = require('./nt/controller');
 
 const isMac = process.platform === 'darwin';
 const RENDERER = path.join(__dirname, '..', 'renderer');
@@ -18,9 +19,13 @@ const DEMO_DEVICE = {
 };
 
 let island, appWin, tray, store, detector;
-const protocol = new Protocol();
+let bridge, controller;
 let demo = false;
+let switching = null; // address being switched to
 let demoTimer = null;
+
+// Linux compositors need this for the island's transparent window.
+if (process.platform === 'linux') app.commandLine.appendSwitch('enable-transparent-visuals');
 
 if (!app.requestSingleInstanceLock()) app.quit();
 app.on('second-instance', () => openApp());
@@ -32,7 +37,10 @@ function state() {
     settings: device ? store.device(device.address) : null,
     prefs: store.prefs(),
     demo,
-    live: protocol.connected,
+    live: !!controller?.open,
+    bridge: !!bridge?.available,
+    paired: demo ? [{ ...DEMO_DEVICE, connected: true }] : detector?.paired || [],
+    switching,
   };
 }
 
@@ -130,6 +138,14 @@ function updateTray() {
     { label: 'Open Nothing Island…', click: () => openApp() },
     { label: 'Show island', enabled: !!d, click: () => islandEvent('connected', d) },
     {
+      label: 'Switch to',
+      enabled: !demo && bridge?.available && detector.paired.length > 1,
+      submenu: (detector.paired.length ? detector.paired : [{ name: 'No other Nothing devices', address: '' }]).map((p) => ({
+        label: p.name, type: 'radio', checked: !!p.connected, enabled: !!p.address,
+        click: () => p.address && !p.connected && ipcMain.emit('tray-switch', null, p.address),
+      })),
+    },
+    {
       label: 'Island enabled', type: 'checkbox', checked: prefs.island.enabled,
       click: (i) => { store.setPrefs({ island: { ...prefs.island, enabled: i.checked } }); if (!i.checked) island.hide(); broadcast(); },
     },
@@ -155,7 +171,8 @@ function setDemo(on) {
     }, 30000);
   } else {
     detector.update(null);
-    detector.start();
+    if (bridge.available) bridge.listDevices();
+    else detector.start();
   }
   broadcast();
 }
@@ -167,6 +184,7 @@ function createTray() {
   if (isMac) icon.setTemplateImage(true);
   tray = new Tray(icon);
   tray.on('click', () => (isMac ? tray.popUpContextMenu() : openApp()));
+  if (process.platform === 'linux') tray.setTitle?.('');
   updateTray();
 }
 
@@ -175,9 +193,13 @@ ipcMain.handle('state:get', () => state());
 ipcMain.handle('device:set', async (_e, patch) => {
   const d = detector.current;
   if (!d) return state();
-  const settings = store.setDevice(d.address, patch);
-  await protocol.apply(d.address, settings);
+  const prev = store.device(d.address);
+  const next = store.setDevice(d.address, patch);
   broadcast();
+  if (controller.open) {
+    const ok = await controller.applyDiff(prev, next);
+    if (!ok) console.warn('[control] some settings were not acknowledged by the buds');
+  }
   return state();
 });
 
@@ -190,8 +212,31 @@ ipcMain.handle('prefs:set', (_e, patch) => {
 
 ipcMain.handle('device:ring', (_e, side) => {
   const d = detector.current;
-  return d ? protocol.ring(d.address, side) : { ok: false };
+  if (!d || !controller.open) return { ok: false };
+  return controller.ring(side === 'stop' ? 'both' : side, side !== 'stop').then((ok) => ({ ok }));
 });
+
+// Quick switch: make `address` the only connected Nothing device.
+ipcMain.on('tray-switch', (_e, address) => switchTo(address));
+ipcMain.handle('device:switch', (_e, address) => switchTo(address));
+
+async function switchTo(address) {
+  if (!bridge.available || demo) return { ok: false };
+  switching = address;
+  broadcast();
+  for (const d of detector.paired) if (d.connected && d.address !== address) bridge.disconnectDevice(d.address);
+  const ok = await new Promise((resolve) => {
+    const t = setTimeout(() => done(false), 20000);
+    const done = (v) => { clearTimeout(t); bridge.off('device', onDev); resolve(v); };
+    const onDev = (m) => m.address === address && done(!!m.ok);
+    bridge.on('device', onDev);
+    bridge.connectDevice(address);
+  });
+  switching = null;
+  bridge.listDevices();
+  broadcast();
+  return { ok };
+}
 
 ipcMain.on('app:open', (_e, section) => openApp(section));
 
@@ -215,19 +260,55 @@ app.whenReady().then(() => {
   if (isMac) app.dock.hide();
   store = new Store();
   detector = new Detector();
-  detector.on('connected', (d) => { islandEvent('connected', d); broadcast(); });
-  detector.on('disconnected', (d) => { islandEvent('disconnected', d); broadcast(); });
+  bridge = new Bridge();
+  controller = new Controller(bridge);
+
+  detector.on('connected', (d) => {
+    islandEvent('connected', d);
+    broadcast();
+    if (!demo && bridge.available) controller.attach(d).then(broadcast);
+  });
+  detector.on('disconnected', (d) => {
+    islandEvent('disconnected', d);
+    if (controller.device?.address === d.address) controller.detach();
+    broadcast();
+  });
   detector.on('updated', broadcast);
+  detector.on('paired', broadcast);
+
+  // The buds are the source of truth: fold what they report into the store and device.
+  controller.on('live', (live) => {
+    const d = detector.current;
+    if (!d || controller.device?.address !== d.address) return;
+    const { battery, firmware, ...settings } = live;
+    const patch = {};
+    if (settings.anc) Object.assign(patch, settings.anc);
+    for (const k of ['eqPreset', 'eqCustom', 'bass', 'lowLag', 'inEar']) if (settings[k] != null) patch[k] = settings[k];
+    if (Object.keys(patch).length) store.setDevice(d.address, patch);
+    detector.patch({ ...(battery ? { battery } : {}), ...(firmware ? { firmware } : {}) });
+    broadcast();
+  });
+  controller.on('status', broadcast);
+  controller.on('log', (m) => process.env.NOTHING_DEBUG && console.log('[control]', m));
+
+  bridge.on('devices', (list) => !demo && detector.fromBridgeList(list));
+  bridge.on('exit', ({ code, signal }) => {
+    console.warn(`[bridge] helper exited (${signal || code}); falling back to polling`);
+    if (!demo && !bridge.available) detector.start();
+  });
 
   createIsland();
   createTray();
 
   if (process.env.NOTHING_DEMO) {
     island.webContents.once('did-finish-load', () => setTimeout(() => setDemo(true), 800));
-  } else {
-    detector.start();
+  } else if (!bridge.start()) {
+    detector.start(); // no native helper for this OS/build: poll the OS instead
   }
+  if (process.env.NOTHING_DEMO) bridge.start();
 });
+
+app.on('before-quit', () => bridge?.stop());
 
 // Menu-bar utility: closing the companion window must not quit.
 app.on('window-all-closed', (e) => e.preventDefault());

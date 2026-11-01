@@ -1,14 +1,29 @@
 const root = document.getElementById('root');
 if (nx.platform === 'darwin') document.body.classList.add('mac');
 
-const BANDS = ['63', '125', '250', '500', '1k', '2k', '4k', '8k'];
-const PRESETS = {
-  balanced: { label: 'Balanced', curve: [0, 0, 0, 0, 0, 0, 0, 0] },
-  bass: { label: 'More bass', curve: [5, 4, 2, 1, 0, 0, 0, 0] },
-  treble: { label: 'More treble', curve: [0, 0, 0, 0, 1, 3, 4, 5] },
-  voice: { label: 'Voice', curve: [-2, -1, 0, 2, 3, 3, 1, 0] },
-  custom: { label: 'Custom', curve: null },
+// Custom EQ is three filters on the buds themselves: bass, mid, treble.
+const BANDS = ['Bass', 'Mid', 'Treble'];
+// Preset sets differ per product family; curves are only for the preview dots.
+const PRESET_SETS = {
+  standard: {
+    balanced: { label: 'Balanced', curve: [0, 0, 0] },
+    bass: { label: 'More bass', curve: [5, 0, -1] },
+    treble: { label: 'More treble', curve: [-1, 0, 5] },
+    voice: { label: 'Voice', curve: [-3, 4, 1] },
+    custom: { label: 'Custom', curve: null },
+  },
+  'cmf-buds-2': {
+    balanced: { label: 'Balanced', curve: [0, 0, 0] },
+    rock: { label: 'Rock', curve: [4, -2, 4] },
+    electronic: { label: 'Electronic', curve: [5, 0, 3] },
+    pop: { label: 'Pop', curve: [-1, 3, 2] },
+    vocals: { label: 'Enhance vocals', curve: [-3, 5, 1] },
+    classical: { label: 'Classical', curve: [2, -1, 3] },
+    custom: { label: 'Custom', curve: null },
+  },
 };
+let PRESETS = PRESET_SETS.standard;
+const eqCurve = (c) => [0, 1, 2].map((i) => Math.max(-6, Math.min(6, Math.round(c?.[i] ?? 0))));
 const GESTURES = {
   play_pause: 'Play / pause', next: 'Next track', prev: 'Previous track',
   volume_up: 'Volume up', volume_down: 'Volume down', noise_control: 'Noise control',
@@ -26,10 +41,10 @@ const sw = (key, on) => `<button class="switch${on ? ' on' : ''}" data-toggle="$
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 function miniCurve(curve) {
-  // 8 columns x 5 rows; light the dot closest to each band's gain.
+  // 3 bands drawn as 9 columns x 5 rows; light the dot closest to each band's gain.
   const cells = [];
   for (let r = 0; r < 5; r++) {
-    for (let c = 0; c < 8; c++) cells.push(`<i class="${Math.round(2 - curve[c] / 3) === r ? 'on' : ''}"></i>`);
+    for (let c = 0; c < 9; c++) cells.push(`<i class="${Math.round(2 - curve[Math.floor(c / 3)] / 3) === r ? 'on' : ''}"></i>`);
   }
   return `<span class="mini">${cells.join('')}</span>`;
 }
@@ -45,7 +60,7 @@ function bandColumn(v, i, editable) {
   }).join('');
   return `<div class="band">
     <span class="val">${v > 0 ? '+' : ''}${v}</span>
-    <div class="col">${dots}${editable ? `<input type="range" min="-6" max="6" step="1" value="${v}" data-band="${i}" aria-label="${BANDS[i]} Hz">` : ''}</div>
+    <div class="col">${dots}${editable ? `<input type="range" min="-6" max="6" step="1" value="${v}" data-band="${i}" aria-label="${BANDS[i]}">` : ''}</div>
     <span class="label">${BANDS[i]}</span>
   </div>`;
 }
@@ -66,17 +81,20 @@ function deviceView() {
   const b = d.battery || {};
   const cells = [['Left', b.left], ['Right', b.right], ['Case', b.case]].filter(([, v]) => v != null);
   if (!cells.length) cells.push(['Battery', b.main]);
-  const curve = s.eqPreset === 'custom' ? s.eqCustom : PRESETS[s.eqPreset]?.curve || PRESETS.balanced.curve;
+  PRESETS = PRESET_SETS[d.model?.eqFamily] || PRESET_SETS.standard;
+  const custom = eqCurve(s.eqCustom);
+  const curve = s.eqPreset === 'custom' ? custom : PRESETS[s.eqPreset]?.curve || PRESETS.balanced.curve;
+  const charging = b.charging || {};
   const g = s.gestures[gestureSide];
 
   const hero = `<section class="hero">
-    <span class="label status">${state.demo ? 'Connected · demo' : 'Connected'}</span>
+    <span class="label status${state.live ? ' live' : ''}">${state.demo ? 'Connected · demo' : state.live ? 'Connected · live' : 'Connected'}</span>
     <h1><span class="brandmark">${brand === 'cmf' ? 'CMF BY NOTHING' : 'NOTHING'}</span>${esc(d.model?.name || d.name)}</h1>
     <div class="stage">
       ${NX.bud({ side: 'left', brand, size: 120 })}${NX.bud({ side: 'right', brand, size: 120 })}
     </div>
     <div class="battery" style="--n:${cells.length}">
-      ${cells.map(([k, v]) => `<div class="cell"><span class="label">${k}</span><b>${NX.fmt(v)}${v != null ? '<small>%</small>' : ''}</b>${NX.dots(v)}</div>`).join('')}
+      ${cells.map(([k, v]) => `<div class="cell${charging[k.toLowerCase()] ? ' charging' : ''}"><span class="label">${k}${charging[k.toLowerCase()] ? ' · charging' : ''}</span><b>${NX.fmt(v)}${v != null ? '<small>%</small>' : ''}</b>${NX.dots(v)}</div>`).join('')}
       ${b.left == null && b.right == null && b.main == null ? '<span class="note">Your OS doesn\'t report battery for these buds yet.</span>' : ''}
     </div>
   </section>`;
@@ -94,7 +112,7 @@ function deviceView() {
   const eq = f.eq ? `<section class="card" id="eq">
     <h2>Equaliser <span class="label">${PRESETS[s.eqPreset]?.label || ''}</span></h2>
     <div class="presets">
-      ${Object.entries(PRESETS).map(([k, p]) => `<button class="preset${s.eqPreset === k ? ' on' : ''}" data-eq="${k}">${miniCurve(p.curve || s.eqCustom)}${p.label}</button>`).join('')}
+      ${Object.entries(PRESETS).map(([k, p]) => `<button class="preset${s.eqPreset === k ? ' on' : ''}" data-eq="${k}">${miniCurve(p.curve || custom)}${p.label}</button>`).join('')}
     </div>
     <div class="eqgraph">${curve.map((v, i) => bandColumn(v, i, s.eqPreset === 'custom')).join('')}</div>
     ${s.eqPreset !== 'custom' ? '<span class="label">Choose Custom to drag each band</span>' : ''}
@@ -136,8 +154,21 @@ function deviceView() {
     <div class="btn-row">
       <button class="btn" data-ring="left">Ring left</button>
       <button class="btn" data-ring="right">Ring right</button>
+      <button class="btn" data-ring="stop">Stop</button>
     </div>
+    ${state.live ? '' : '<span class="label">Needs the live connection</span>'}
   </section>`;
+
+  const others = state.paired || [];
+  const devices = others.length > 1 ? `<section class="card" id="devices">
+    <h2>Your Nothing devices <span class="label">Quick switch</span></h2>
+    <div class="rows">
+      ${others.map((p) => `<div class="row">
+        <div class="txt">${esc(p.name)}<small>${p.connected ? 'Connected' : state.switching === p.address ? 'Connecting…' : 'Paired'}</small></div>
+        ${p.connected ? '<span class="label">In use</span>' : `<button class="btn" data-switch="${esc(p.address)}"${state.switching ? ' disabled' : ''}>Switch</button>`}
+      </div>`).join('')}
+    </div>
+  </section>` : '';
 
   const island = `<section class="card" id="island">
     <h2>Island &amp; app</h2>
@@ -156,10 +187,13 @@ function deviceView() {
       <div class="row"><span class="label">Address</span><span class="mono">${esc(d.address)}</span></div>
       ${d.firmware ? `<div class="row"><span class="label">Firmware</span><span class="mono">${esc(d.firmware)}</span></div>` : ''}
     </div>
-    ${state.live ? '' : '<div class="notice">Settings are saved on this computer. Sending them to the buds needs the direct earbud link (RFCOMM bridge), which isn\'t active yet.</div>'}
+    <div class="row"><span class="label">Control link</span><span class="mono">${state.live ? 'Live' : state.demo ? 'Demo' : state.bridge ? 'Connecting…' : 'Unavailable'}</span></div>
+    ${state.live || state.demo ? '' : `<div class="notice">${state.bridge
+      ? 'Waiting for the buds to answer. Changes are saved and sent as soon as the link is up.'
+      : 'This build has no Bluetooth helper for your system, so changes are only saved on this computer.'}</div>`}
   </section>`;
 
-  return `<div class="grid">${hero}<div class="panels">${noise}${eq}${bass}${gestures}${more}${find}${island}${info}</div></div>`;
+  return `<div class="grid">${hero}<div class="panels">${noise}${eq}${bass}${gestures}${more}${find}${devices}${island}${info}</div></div>`;
 }
 
 function render() {
@@ -188,10 +222,14 @@ root.addEventListener('click', (e) => {
   else if (t.dataset.eq) set({ eqPreset: t.dataset.eq });
   else if (t.dataset.bass) set({ bass: { ...s.bass, level: +t.dataset.bass } });
   else if (t.dataset.side) { gestureSide = t.dataset.side; render(); }
+  else if (t.dataset.switch) nx.switchTo(t.dataset.switch).then(() => nx.getState().then(update));
   else if (t.dataset.ring) {
-    nx.ring(t.dataset.ring);
-    t.textContent = 'Ringing…';
-    setTimeout(() => (t.textContent = `Ring ${t.dataset.ring}`), 2500);
+    const side = t.dataset.ring;
+    nx.ring(side).then((r) => {
+      if (side === 'stop') return;
+      t.textContent = r?.ok ? 'Ringing…' : 'Not connected';
+      setTimeout(() => (t.textContent = `Ring ${side}`), 2500);
+    });
   } else if (t.dataset.toggle) {
     const k = t.dataset.toggle;
     if (k === 'island') nx.setPrefs({ island: { ...state.prefs.island, enabled: !state.prefs.island.enabled } }).then(update);
@@ -217,7 +255,7 @@ root.addEventListener('change', (e) => {
   const t = e.target;
   const s = state?.settings;
   if (t.dataset.band != null) {
-    const eqCustom = [...s.eqCustom];
+    const eqCustom = eqCurve(s.eqCustom);
     eqCustom[+t.dataset.band] = +t.value;
     set({ eqCustom });
   } else if (t.dataset.gesture) {

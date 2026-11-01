@@ -89,3 +89,13 @@ body { font-family: var(--font-ui); color: #fff; }
 .goodbye .dot-type { font-size: 16px; text-transform: uppercase; color: #8c8c8c; }
 
 @keyframes pulse { 50% { opacity: 0.35; } }
+
+#eHint { display: flex; gap: 6px; min-width: 0; }
+.swap {
+  height: 30px; padding: 0 12px; border-radius: 15px; background: #1c1c1c; color: #fff; white-space: nowrap;
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase;
+  overflow: hidden; text-overflow: ellipsis; max-width: 150px; transition: background 0.2s, transform 0.2s var(--spring);
+}
+.swap:hover { background: #2a2a2a; }
+.swap:active { transform: scale(0.95); }
+.swap[disabled] { opacity: 0.5; }
