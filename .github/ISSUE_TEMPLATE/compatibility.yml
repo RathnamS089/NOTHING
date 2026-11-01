@@ -1,0 +1,61 @@
+name: Compatibility report
+description: Tell us how Nothing Island works with your buds and system, good or bad.
+title: "[Compat] <model> on <OS>"
+labels: [compatibility]
+body:
+  - type: input
+    id: model
+    attributes:
+      label: Buds model
+      placeholder: CMF Buds Pro 2
+    validations:
+      required: true
+  - type: input
+    id: firmware
+    attributes:
+      label: Buds firmware version
+      description: Shown under Device in Nothing Island once it says "Live", or in the Nothing X app on your phone.
+      placeholder: 1.0.2.45
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options: [macOS, Linux, Windows]
+    validations:
+      required: true
+  - type: input
+    id: os-version
+    attributes:
+      label: OS version
+      description: "Linux: your distro and version, from `cat /etc/os-release` (e.g. Ubuntu 24.04, Fedora 41)."
+      placeholder: macOS 26.1 / Ubuntu 24.04 / Windows 11 24H2
+    validations:
+      required: true
+  - type: input
+    id: desktop
+    attributes:
+      label: Desktop environment (Linux only)
+      description: "From `echo $XDG_CURRENT_DESKTOP $XDG_SESSION_TYPE` (e.g. GNOME wayland, KDE x11)."
+  - type: input
+    id: app-version
+    attributes:
+      label: Nothing Island version
+      description: The release you downloaded, or "source" plus `git log -1 --oneline` if you run from source.
+      placeholder: v0.1.0-alpha.6
+    validations:
+      required: true
+  - type: checkboxes
+    id: works
+    attributes:
+      label: What worked?
+      options:
+        - label: The island popped up when the buds connected
+        - label: Battery showed up
+        - label: The app said "Connected · live"
+        - label: Changing ANC / transparency changed the buds
+        - label: Changing EQ changed the buds
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else
+      description: "What went wrong, screenshots, or the output of `NOTHING_DEBUG=1 npm start` (Mac: `bash scripts/mac-diagnose.sh`)."

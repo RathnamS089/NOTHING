@@ -11,15 +11,16 @@
   <header class="titlebar">
     <span class="label brand" id="brandLabel">Nothing Island</span>
     <div class="win-ctrls">
-      <button data-win="minimize" aria-label="Minimise">—</button>
-      <button data-win="maximize" aria-label="Maximise">□</button>
-      <button data-win="close" aria-label="Close">✕</button>
+      <button data-win="minimize" aria-label="Minimise"><svg viewBox="0 0 16 16"><path d="M4 8h8"/></svg></button>
+      <button data-win="maximize" aria-label="Maximise"><svg viewBox="0 0 16 16"><rect x="4" y="4" width="8" height="8" rx="1.5"/></svg></button>
+      <button data-win="close" aria-label="Close"><svg viewBox="0 0 16 16"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/></svg></button>
     </div>
   </header>
 
   <main id="root"></main>
 
   <script src="../shared/ui.js"></script>
+  <script src="../shared/glyph.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

@@ -1,24 +1,142 @@
 {
   "name": "nothing-island",
   "version": "0.1.0",
-  "description": "Dynamic Island widget + Nothing X-style companion for Nothing and CMF earbuds on macOS and Windows",
+  "description": "Dynamic Island widget + Nothing X-style companion for Nothing and CMF earbuds on macOS, Windows and Linux",
   "main": "src/main/main.js",
   "scripts": {
     "start": "electron .",
+    "dev": "electron .",
     "demo": "NOTHING_DEMO=1 electron .",
     "demo:win": "set NOTHING_DEMO=1&& electron .",
-    "icon": "node scripts/make-icon.js"
+    "test": "node --test \"test/**/*.test.js\"",
+    "icon": "node scripts/make-icon.js",
+    "build:native": "node scripts/build-native.js",
+    "postinstall": "node scripts/build-native.js",
+    "dist:mac": "npm run build:native && electron-builder --mac",
+    "dist:linux": "electron-builder --linux",
+    "dist:win": "electron-builder --win"
   },
   "license": "MIT",
   "type": "commonjs",
   "devDependencies": {
-    "electron": "^45.1.0"
+    "electron": "^45.1.0",
+    "electron-builder": "^26.18.0"
   },
   "dependencies": {
     "@fontsource/doto": "^5.3.0",
     "@fontsource/space-grotesk": "^5.3.0",
-    "@fontsource/space-mono": "^5.3.0"
+    "@fontsource/space-mono": "^5.3.0",
+    "electron-updater": "6.8.11"
   },
   "productName": "Nothing Island",
-  "private": true
+  "private": true,
+  "author": {
+    "name": "Rathnam S",
+    "email": "RathnamS089@users.noreply.github.com"
+  },
+  "homepage": "https://github.com/RathnamS089/NOTHING",
+  "build": {
+    "appId": "app.nothingisland",
+    "productName": "Nothing Island",
+    "artifactName": "Nothing-Island-${version}-${arch}.${ext}",
+    "files": [
+      "src/**",
+      "assets/**",
+      "package.json",
+      "node_modules/@fontsource/doto/files/doto-latin-{700,900}-normal.woff2",
+      "node_modules/@fontsource/space-grotesk/files/space-grotesk-latin-{400,500}-normal.woff2",
+      "node_modules/@fontsource/space-mono/files/space-mono-latin-400-normal.woff2"
+    ],
+    "mac": {
+      "category": "public.app-category.utilities",
+      "target": [
+        "dmg"
+      ],
+      "identity": "-",
+      "hardenedRuntime": false,
+      "extendInfo": {
+        "LSUIElement": true,
+        "NSBluetoothAlwaysUsageDescription": "Nothing Island talks to your Nothing and CMF earbuds over Bluetooth."
+      },
+      "extraResources": [
+        {
+          "from": "native/bin",
+          "to": "native/bin"
+        }
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb",
+        "rpm"
+      ],
+      "category": "Audio",
+      "icon": "assets/tray-win.png",
+      "extraResources": [
+        {
+          "from": "native/linux",
+          "to": "native/linux"
+        }
+      ],
+      "syncDesktopName": true,
+      "maintainer": "Rathnam S <RathnamS089@users.noreply.github.com>",
+      "executableArgs": [
+        "--ozone-platform=x11"
+      ]
+    },
+    "deb": {
+      "depends": [
+        "libgtk-3-0 | libgtk-3-0t64",
+        "libnotify4",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils",
+        "libatspi2.0-0 | libatspi2.0-0t64",
+        "libuuid1",
+        "libsecret-1-0",
+        "bluez",
+        "python3"
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "electronFuses": {
+      "runAsNode": false,
+      "enableCookieEncryption": true,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true,
+      "loadBrowserProcessSpecificV8Snapshot": false
+    },
+    "nsis": {
+      "artifactName": "Nothing-Island-Setup-${version}.${ext}"
+    },
+    "rpm": {
+      "depends": [
+        "gtk3",
+        "libnotify",
+        "nss",
+        "libXScrnSaver",
+        "libXtst",
+        "xdg-utils",
+        "at-spi2-core",
+        "libuuid",
+        "libsecret",
+        "bluez",
+        "python3"
+      ]
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "RathnamS089",
+      "repo": "NOTHING"
+    }
+  },
+  "desktopName": "nothing-island.desktop"
 }

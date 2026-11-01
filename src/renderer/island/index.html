@@ -11,11 +11,17 @@
   <div id="stage">
     <div id="pill" class="hidden" role="status" aria-live="polite">
       <div class="compact">
+        <canvas class="mini-glyph" id="cMedia" width="34" height="14" aria-hidden="true"></canvas>
         <span class="anc-glyph" id="cGlyph"></span>
         <span class="c-spacer"></span>
         <span class="c-batt"><span id="cDots"></span><b class="dot-type" id="cLevel">—</b></span>
       </div>
       <div class="expanded">
+        <div class="row media" id="eMedia">
+          <canvas id="eGlyph" width="72" height="40" aria-hidden="true"></canvas>
+          <canvas id="eCover" class="cover" width="44" height="44" aria-hidden="true"></canvas>
+          <div class="mtxt"><span class="label" id="eSrc"></span><span class="mtitle" id="eTitle"></span><span class="martist" id="eArtist"></span></div>
+        </div>
         <div class="row head">
           <div class="buds" id="eBuds"></div>
           <div class="title">
@@ -30,6 +36,11 @@
           <button class="customise" id="eOpen">Customise <span aria-hidden="true">→</span></button>
         </div>
       </div>
+      <div class="trackview">
+        <canvas id="tGlyph" width="128" height="48" aria-hidden="true"></canvas>
+        <canvas id="tCover" class="cover" width="64" height="64" aria-hidden="true"></canvas>
+        <div class="mtxt"><span class="label" id="tSrc"></span><span class="mtitle dot-type" id="tTitle"></span><span class="martist" id="tArtist"></span></div>
+      </div>
       <div class="goodbye">
         <span class="label">Disconnected</span>
         <span class="dot-type" id="gName"></span>
@@ -37,6 +48,7 @@
     </div>
   </div>
   <script src="../shared/ui.js"></script>
+  <script src="../shared/glyph.js"></script>
   <script src="island.js"></script>
 </body>
 </html>

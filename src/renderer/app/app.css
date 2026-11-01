@@ -6,16 +6,29 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Title bar: drag region; macOS keeps native traffic lights, Windows gets our own buttons. */
-.titlebar { height: 48px; flex: none; display: flex; align-items: center; justify-content: center; -webkit-app-region: drag; position: relative; }
+/* Title bar: drag region. macOS keeps native traffic lights; Windows and Linux
+   get our own buttons, styled after each platform's conventions. */
+.titlebar { height: 48px; flex: none; display: flex; align-items: center; justify-content: center; -webkit-app-region: drag; position: relative; user-select: none; }
 .titlebar .brand { color: var(--text-3); }
-.win-ctrls { position: absolute; right: 6px; top: 6px; display: flex; gap: 2px; -webkit-app-region: no-drag; }
-.win-ctrls button { width: 36px; height: 32px; border-radius: 10px; color: var(--text-2); font-size: 13px; }
+.win-ctrls { position: absolute; right: 6px; top: 0; bottom: 0; display: flex; align-items: center; gap: 2px; -webkit-app-region: no-drag; }
+.win-ctrls button { display: grid; place-items: center; color: var(--text-2); transition: background 0.15s, color 0.15s; }
+.win-ctrls svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; }
 .win-ctrls button:hover { background: var(--surface-2); color: var(--text); }
-.win-ctrls button[data-win='close']:hover { background: var(--red); color: #fff; }
 .mac .win-ctrls { display: none; }
 
-main { flex: 1; overflow-y: auto; container-type: inline-size; scrollbar-width: thin; }
+/* Windows: wide rectangular hit areas, red close. */
+.win .win-ctrls button { width: 40px; height: 32px; border-radius: 10px; }
+.win .win-ctrls button[data-win='close']:hover { background: var(--red); color: #fff; }
+
+/* Linux (GNOME/KDE): small round buttons on a soft disc, spaced apart. */
+.linux .win-ctrls { right: 12px; gap: 10px; }
+.linux .win-ctrls button { width: 24px; height: 24px; border-radius: 50%; background: var(--surface-2); }
+.linux .win-ctrls svg { width: 14px; height: 14px; stroke-width: 1.6; }
+.linux .win-ctrls button:hover { background: var(--line); }
+.linux .win-ctrls button:active { transform: scale(0.92); }
+
+/* Chromium ignores ::-webkit-scrollbar once scrollbar-width is set, so colour it here too (Linux/Windows show it). */
+main { flex: 1; overflow-y: auto; container-type: inline-size; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
 main::-webkit-scrollbar { width: 8px; }
 main::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
 
@@ -24,7 +37,10 @@ main::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
 /* ---------- Hero ---------- */
 .hero { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 4px 4px 12px; gap: 8px; }
 .hero .status { display: inline-flex; align-items: center; gap: 8px; }
-.hero .status::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.hero .status::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); }
+.hero .status.live::before { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+.battery .cell.charging b { color: var(--accent); }
+.btn[disabled] { opacity: 0.4; pointer-events: none; }
 .hero h1 { font-family: var(--font-dot); font-weight: 900; font-size: clamp(34px, 9cqi, 64px); line-height: 1; text-transform: uppercase; letter-spacing: 0.01em; }
 .hero h1 .brandmark { display: block; font-size: 0.42em; color: var(--text-2); letter-spacing: 0.12em; margin-bottom: 4px; }
 
@@ -71,11 +87,11 @@ main::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
 .presets { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; }
 .preset { background: var(--surface-2); border-radius: var(--radius-m); padding: 12px; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; text-align: left; font-size: 13px; transition: background 0.2s, color 0.2s; }
 .preset.on { background: var(--invert-bg); color: var(--invert-fg); }
-.preset .mini { display: grid; grid-template-columns: repeat(8, 4px); grid-auto-rows: 4px; gap: 2px; }
+.preset .mini { display: grid; grid-template-columns: repeat(9, 4px); grid-auto-rows: 4px; gap: 2px; }
 .preset .mini i { border-radius: 50%; background: currentColor; opacity: 0.15; }
 .preset .mini i.on { opacity: 1; }
 
-.eqgraph { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; align-items: stretch; }
+.eqgraph { display: grid; grid-template-columns: repeat(3, 1fr); max-width: 360px; width: 100%; margin: 0 auto; gap: 4px; align-items: stretch; }
 .band { display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .band .col { position: relative; display: grid; grid-template-rows: repeat(13, 1fr); gap: 4px; height: 160px; justify-items: center; }
 .band .col i { width: 6px; height: 6px; border-radius: 50%; background: var(--dot-off); }
@@ -138,3 +154,11 @@ select {
   .panels { display: block; columns: 2; column-gap: 12px; }
   .panels .card { margin-bottom: 12px; }
 }
+
+/* Now playing: the song's glyph, large */
+.nowplaying #npGlyph { width: 100%; aspect-ratio: 4 / 1; display: block; }
+.np-head { display: flex; align-items: center; gap: 18px; min-width: 0; }
+#npCover { width: clamp(110px, 32cqi, 180px); aspect-ratio: 1; flex: none; display: block; }
+.np-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.np-title { font-family: var(--font-dot); font-weight: 900; font-size: 22px; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.np-artist { color: var(--text-2); font-size: 13px; }

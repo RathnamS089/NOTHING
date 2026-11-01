@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld('nx', {
   setDevice: (patch) => ipcRenderer.invoke('device:set', patch),
   setPrefs: (patch) => ipcRenderer.invoke('prefs:set', patch),
   ring: (side) => ipcRenderer.invoke('device:ring', side),
+  update: (action) => ipcRenderer.invoke('update:action', action),
+  switchTo: (address) => ipcRenderer.invoke('device:switch', address),
   openApp: (section) => ipcRenderer.send('app:open', section),
   onNavigate: (cb) => ipcRenderer.on('navigate', (_e, section) => cb(section)),
   islandInteractive: (on) => ipcRenderer.send('island:interactive', on),
